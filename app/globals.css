@@ -1,0 +1,512 @@
+@import "tailwindcss";
+
+/* Manual theme switching: the `dark` class is set on <html> by ThemeProvider. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ==========================================================================
+   Klack design tokens
+   Aesthetic: "keycap industrial", warm paper, machined surfaces, ink legends.
+   Every colour lives here as a semantic role. Components never use raw hex.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Surfaces */
+  --canvas: #f3f0e8;
+  --surface: #fbf9f4;
+  --raised: #ffffff;
+  --muted: #e9e4d8;
+  --keycap: #fdfcf8;
+  --keycap-edge: #d9d2c3;
+
+  /* Text */
+  --ink: #1a1814;
+  --ink-soft: #635c51;
+  --ink-faint: #69624f;
+
+  /* Lines */
+  --line: #dbd4c6;
+  --line-soft: #e8e2d6;
+
+  /* Brand + accent (overridden per accent theme below) */
+  --primary: #0e6e68;
+  --primary-hover: #0b5a55;
+  --primary-ink: #f4faf9;
+  --primary-soft: #dcece9;
+  --accent: #a86c0a;
+  --accent-ink: #241a05;
+  --accent-soft: #f5e8cd;
+
+  /* Status */
+  --success: #3f7a2e;
+  --success-soft: #e2edd9;
+  --warning: #8f5d06;
+  --warning-soft: #f7e9cb;
+  --danger: #b23a22;
+  --danger-hover: #96301b;
+  --danger-ink: #fff6f3;
+  --danger-soft: #f7e0d9;
+  --info: #1f5f8b;
+  --info-soft: #dde9f2;
+
+  /* Interaction */
+  --focus: #0e6e68;
+  --hover-veil: rgb(26 24 20 / 0.05);
+  --press-veil: rgb(26 24 20 / 0.1);
+  --selected: #dcece9;
+  --disabled-ink: #a09889;
+
+  /* Typing surface */
+  --type-pending: #736c5d;
+  --type-correct: #1a1814;
+  --type-wrong: #b23a22;
+  --type-wrong-veil: #f6ddd6;
+  --caret: #0e6e68;
+
+  /* Charts */
+  --chart-1: var(--primary);
+  --chart-2: #a86c0a;
+  --chart-3: #3f7a2e;
+  --chart-4: #1f5f8b;
+  --chart-5: #b23a22;
+
+  /* Elevation, machined, tight, warm */
+  --shadow-tile: 0 1px 0 0 rgb(255 255 255 / 0.7) inset,
+    0 1px 2px rgb(41 36 26 / 0.06), 0 6px 16px -8px rgb(41 36 26 / 0.14);
+  --shadow-key: 0 1px 0 0 rgb(255 255 255 / 0.9) inset,
+    0 2px 0 0 var(--keycap-edge), 0 3px 6px -3px rgb(41 36 26 / 0.25);
+  --shadow-pop: 0 1px 2px rgb(41 36 26 / 0.08), 0 18px 40px -12px rgb(41 36 26 / 0.28);
+
+  --grid-dot: rgb(26 24 20 / 0.07);
+}
+
+.dark {
+  color-scheme: dark;
+
+  --canvas: #131210;
+  --surface: #1b1a16;
+  --raised: #23211c;
+  --muted: #2a2822;
+  --keycap: #262420;
+  --keycap-edge: #100f0d;
+
+  --ink: #f1ede3;
+  --ink-soft: #a89f90;
+  --ink-faint: #978e7d;
+
+  --line: #363329;
+  --line-soft: #292720;
+
+  --primary: #35c7be;
+  --primary-hover: #56d6ce;
+  --primary-ink: #06211f;
+  --primary-soft: #14332f;
+  --accent: #e3a94e;
+  --accent-ink: #211803;
+  --accent-soft: #33280f;
+
+  --success: #7cc463;
+  --success-soft: #1d2c17;
+  --warning: #dfa43a;
+  --warning-soft: #322510;
+  --danger: #f0785a;
+  --danger-hover: #f79079;
+  --danger-ink: #2a0d06;
+  --danger-soft: #38180f;
+  --info: #6bb2df;
+  --info-soft: #152834;
+
+  --focus: #35c7be;
+  --hover-veil: rgb(241 237 227 / 0.06);
+  --press-veil: rgb(241 237 227 / 0.12);
+  --selected: #14332f;
+  --disabled-ink: #6f6759;
+
+  --type-pending: #8b8474;
+  --type-correct: #f1ede3;
+  --type-wrong: #f0785a;
+  --type-wrong-veil: #3a1a11;
+  --caret: #35c7be;
+
+  --chart-2: #e3a94e;
+  --chart-3: #7cc463;
+  --chart-4: #6bb2df;
+  --chart-5: #f0785a;
+
+  --shadow-tile: 0 1px 0 0 rgb(255 255 255 / 0.04) inset,
+    0 1px 2px rgb(0 0 0 / 0.4), 0 8px 20px -10px rgb(0 0 0 / 0.6);
+  --shadow-key: 0 1px 0 0 rgb(255 255 255 / 0.06) inset,
+    0 2px 0 0 var(--keycap-edge), 0 4px 8px -4px rgb(0 0 0 / 0.6);
+  --shadow-pop: 0 1px 2px rgb(0 0 0 / 0.5), 0 22px 48px -14px rgb(0 0 0 / 0.75);
+
+  --grid-dot: rgb(241 237 227 / 0.06);
+}
+
+/* ---- Accent themes: swap the brand pair, keep status colours stable ---- */
+:root[data-accent="amber"] {
+  --primary: #8f5d06;
+  --primary-hover: #754c04;
+  --primary-ink: #fff8ec;
+  --primary-soft: #f6e8cd;
+  --accent: #0e6e68;
+  --accent-soft: #dcece9;
+  --focus: #8f5d06;
+  --selected: #f6e8cd;
+  --caret: #8f5d06;
+}
+.dark[data-accent="amber"] {
+  --primary: #eeae52;
+  --primary-hover: #f5c176;
+  --primary-ink: #241703;
+  --primary-soft: #362810;
+  --accent: #4bd3ca;
+  --accent-soft: #14332f;
+  --focus: #eeae52;
+  --selected: #362810;
+  --caret: #eeae52;
+}
+
+:root[data-accent="cobalt"] {
+  --primary: #1f4fa8;
+  --primary-hover: #183f88;
+  --primary-ink: #f2f6fd;
+  --primary-soft: #dde5f6;
+  --focus: #1f4fa8;
+  --selected: #dde5f6;
+  --caret: #1f4fa8;
+}
+.dark[data-accent="cobalt"] {
+  --primary: #7ba7f2;
+  --primary-hover: #9cbdf7;
+  --primary-ink: #061029;
+  --primary-soft: #17233f;
+  --focus: #7ba7f2;
+  --selected: #17233f;
+  --caret: #7ba7f2;
+}
+
+/* ==========================================================================
+   Tailwind theme wiring
+   ========================================================================== */
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-raised: var(--raised);
+  --color-muted: var(--muted);
+  --color-keycap: var(--keycap);
+  --color-keycap-edge: var(--keycap-edge);
+
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-faint: var(--ink-faint);
+
+  --color-line: var(--line);
+  --color-line-soft: var(--line-soft);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-ink: var(--primary-ink);
+  --color-primary-soft: var(--primary-soft);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-ink: var(--danger-ink);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+
+  --color-focus: var(--focus);
+  --color-selected: var(--selected);
+  --color-disabled-ink: var(--disabled-ink);
+
+  --color-type-pending: var(--type-pending);
+  --color-type-correct: var(--type-correct);
+  --color-type-wrong: var(--type-wrong);
+  --color-type-wrong-veil: var(--type-wrong-veil);
+  --color-caret: var(--caret);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+
+  --font-display: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  /* Squarer than Tailwind's default scale, machined, not pillowy. */
+  --radius-sm: 3px;
+  --radius-md: 5px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+
+  --shadow-tile: var(--shadow-tile);
+  --shadow-key: var(--shadow-key);
+  --shadow-pop: var(--shadow-pop);
+
+  --ease-key: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ==========================================================================
+   Base
+   ========================================================================== */
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+    scrollbar-color: var(--line) transparent;
+    scrollbar-width: thin;
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--ink);
+    font-family: var(--font-archivo), ui-sans-serif, system-ui, sans-serif;
+    /* Graph-paper dot grid: the workshop surface everything sits on. */
+    background-image: radial-gradient(var(--grid-dot) 1px, transparent 1px);
+    background-size: 22px 22px;
+    background-position: -1px -1px;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-bricolage), ui-sans-serif, system-ui, sans-serif;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  ::selection {
+    background-color: var(--primary);
+    color: var(--primary-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+}
+
+@layer utilities {
+  /* Small-caps metadata labels: the "legend" text of the design system. */
+  .legend {
+    font-family: var(--font-jetbrains), ui-monospace, monospace;
+    font-size: 0.6875rem;
+    line-height: 1.1;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* A physical keycap: inset highlight, hard bottom edge, tight radius. */
+  .keycap {
+    background-color: var(--keycap);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-key);
+  }
+
+  .hairline {
+    background-image: linear-gradient(
+      to right,
+      var(--line) 0 4px,
+      transparent 4px 8px
+    );
+    background-size: 8px 1px;
+    background-repeat: repeat-x;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Typing surface metrics
+
+   Font size and line height are set here rather than with utilities because
+   Tailwind's `text-[size]` also emits a `line-height`, which wins over
+   `leading-*` depending on rule order. The typing surface needs an exact,
+   predictable line height: it is measured in JavaScript to place the caret and
+   to scroll one line at a time.
+   -------------------------------------------------------------------------- */
+
+.type-surface {
+  --type-lh: 2.25rem;
+  --type-fs: 1.0625rem;
+  height: calc(var(--type-lh) * 3);
+}
+
+.type-surface[data-size="lg"] {
+  --type-lh: 2.6rem;
+  --type-fs: 1.25rem;
+}
+
+@media (min-width: 40rem) {
+  .type-surface {
+    --type-lh: 2.6rem;
+    --type-fs: 1.375rem;
+  }
+  .type-surface[data-size="lg"] {
+    --type-lh: 3.25rem;
+    --type-fs: 1.75rem;
+  }
+}
+
+.type-track {
+  font-size: var(--type-fs);
+  line-height: var(--type-lh);
+}
+
+/* Accent preview swatches need the literal colour of a theme that is not
+   currently applied, so they cannot read from the cascade. */
+[data-swatch="teal"] {
+  background-color: #0e6e68;
+}
+.dark [data-swatch="teal"] {
+  background-color: #35c7be;
+}
+[data-swatch="amber"] {
+  background-color: #8f5d06;
+}
+.dark [data-swatch="amber"] {
+  background-color: #eeae52;
+}
+[data-swatch="cobalt"] {
+  background-color: #1f4fa8;
+}
+.dark [data-swatch="cobalt"] {
+  background-color: #7ba7f2;
+}
+
+/* ==========================================================================
+   Motion, shared timings so the whole app feels like one machine.
+   ========================================================================== */
+
+@keyframes klack-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0.12;
+  }
+}
+
+@keyframes klack-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes klack-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97) translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes klack-sweep {
+  from {
+    transform: translateX(-120%);
+  }
+  to {
+    transform: translateX(320%);
+  }
+}
+
+.animate-caret {
+  animation: klack-caret 1.05s steps(1, end) infinite;
+}
+
+.animate-rise {
+  animation: klack-rise 0.32s var(--ease-key) both;
+}
+
+.animate-pop-in {
+  animation: klack-pop-in 0.18s var(--ease-key) both;
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--muted);
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 33%;
+  background-image: linear-gradient(
+    90deg,
+    transparent,
+    var(--hover-veil),
+    transparent
+  );
+  animation: klack-sweep 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .animate-caret {
+    animation: none;
+    opacity: 1;
+  }
+  .skeleton::after {
+    display: none;
+  }
+}
+
+/* The in-app "reduce motion" setting mirrors the OS preference for people who
+   want calm UI without changing their system settings. */
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+:root[data-motion="reduced"] .animate-caret {
+  animation: none;
+  opacity: 1;
+}
+:root[data-motion="reduced"] .skeleton::after {
+  display: none;
+}
