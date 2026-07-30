@@ -124,7 +124,7 @@ export function ResultsPanel({
                     key={key.id}
                     className="flex items-center gap-2 rounded-md border border-line bg-muted/40 py-1 pl-1 pr-2.5"
                   >
-                    <Kbd className="bg-raised">{charName(key.char)}</Kbd>
+                    <Kbd>{charName(key.char)}</Kbd>
                     <span className="font-mono text-[0.6875rem] text-ink-soft tnum">
                       {formatInt(key.misses)} missed
                     </span>
@@ -151,9 +151,13 @@ export function ResultsPanel({
         <Button variant="primary" onClick={onNext}>
           <SkipForward className="size-4" aria-hidden />
           Next test
-          <Kbd className="ml-1 border-primary-ink/25 bg-primary-ink/15 text-primary-ink shadow-none">
-            Tab
-          </Kbd>
+          {/* Left as a real keycap. Tinting it to sit on the primary button
+              cannot work: `.keycap` is declared after Tailwind's utilities in
+              the same layer, so its background-color wins over any `bg-*`
+              class, and the legend was left the same near-black as the button
+              text in dark mode. `text-ink-soft` tracks the theme, so it reads
+              in both. */}
+          <Kbd className="ml-1">Tab</Kbd>
         </Button>
         <Button variant="keycap" onClick={onRepeat}>
           <RotateCcw className="size-4" aria-hidden />

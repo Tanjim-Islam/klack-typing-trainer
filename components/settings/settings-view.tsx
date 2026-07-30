@@ -35,6 +35,7 @@ import { Segmented, Select, Switch } from "@/components/ui/controls";
 import { SettingRow } from "@/components/ui/field";
 import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { useToast } from "@/components/ui/toast";
+import { AccountPanel } from "./account-panel";
 
 function AccentPicker({
   value,
@@ -77,7 +78,7 @@ function AccentPicker({
 
 export function SettingsView() {
   const toast = useToast();
-  const { ready, status, settings, results, drills } = useStore();
+  const { ready, status, settings, results, drills, account } = useStore();
 
   const fileRef = useRef<HTMLInputElement>(null);
   const [resetting, setResetting] = useState(false);
@@ -132,6 +133,8 @@ export function SettingsView() {
 
   return (
     <div className="flex flex-col gap-5">
+      <AccountPanel />
+
       {status === "recovered" ? (
         <Panel className="border-warning/30 bg-warning-soft">
           <PanelBody className="flex items-start gap-3">
@@ -381,7 +384,11 @@ export function SettingsView() {
         <PanelHeader
           icon={<Database className="size-4" aria-hidden />}
           title="Your data"
-          description="Klack has no account and no server. Everything lives in this browser's local storage."
+          description={
+            account
+              ? "Your history is stored in your account. This browser keeps a copy so the app opens instantly."
+              : "Without an account, everything lives in this browser's local storage."
+          }
         />
         <PanelBody className="flex flex-col gap-5">
           <div className="grid gap-3 sm:grid-cols-3">
@@ -399,7 +406,9 @@ export function SettingsView() {
             </div>
             <div className="rounded-lg border border-line bg-muted/40 px-4 py-3">
               <p className="legend">Storage</p>
-              <p className="mt-1.5 text-sm font-medium text-ink">This browser only</p>
+              <p className="mt-1.5 text-sm font-medium text-ink">
+                {account ? "Your account" : "This browser only"}
+              </p>
             </div>
           </div>
 
@@ -440,9 +449,9 @@ export function SettingsView() {
           </div>
 
           <p className="text-xs leading-relaxed text-ink-faint">
-            Importing replaces everything currently stored. Clearing your browser data
-            or using private browsing will lose your history, so export a backup if it
-            matters to you.
+            {account
+              ? "Importing replaces everything currently stored, in this browser and in your account. Resetting deletes your tests, drills and settings from the database too."
+              : "Importing replaces everything currently stored. Clearing your browser data or using private browsing will lose your history, so export a backup if it matters to you."}
           </p>
         </PanelBody>
       </Panel>
@@ -455,7 +464,9 @@ export function SettingsView() {
           <>
             This deletes all {results.length} saved tests, your{" "}
             {drills.filter((d) => !d.builtIn).length} custom drills and every setting
-            on this page. Built-in drills come back. This cannot be undone.
+            on this page
+            {account ? ", from your account as well as this browser" : ""}. Built-in
+            drills come back. This cannot be undone.
           </>
         }
         confirmLabel="Reset everything"

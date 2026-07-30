@@ -5,6 +5,9 @@ import { ToastProvider } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { BottomNav, TopNav } from "@/components/layout/site-nav";
 import { ThemeSync, themeBootstrapScript } from "@/components/layout/theme-sync";
+import { SyncNotices } from "@/components/layout/sync-notices";
+import { AuthListener } from "@/components/auth/auth-listener";
+import { currentAccount } from "@/lib/auth/current-account";
 import "./globals.css";
 
 /* Display face: an industrial grotesque with enough character to carry the
@@ -47,11 +50,15 @@ export const viewport: Viewport = {
   ],
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Read once here rather than per page: the nav is the only thing that needs
+  // it, and this keeps every page free to stay a static shell.
+  const account = await currentAccount();
+
   return (
     <html
       lang="en"
@@ -71,13 +78,17 @@ export default function RootLayout({
         <TooltipProvider>
           <ToastProvider>
             <ThemeSync />
+            {/* Neither renders anything: one keeps the store in step with the
+                session, the other reports failed writes. */}
+            <AuthListener initialUserId={account?.id ?? null} />
+            <SyncNotices />
             <a
               href="#main"
               className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-primary focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-primary-ink"
             >
               Skip to content
             </a>
-            <TopNav />
+            <TopNav initialAccount={account} />
             <main
               id="main"
               className="mx-auto w-full max-w-6xl flex-1 px-4 pb-24 pt-6 sm:px-6 sm:pt-8 md:pb-14"

@@ -5,8 +5,9 @@ import { usePathname } from "next/navigation";
 import { Dumbbell, Flame, Keyboard, LineChart, Settings2 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { currentStreak } from "@/lib/analysis";
-import { useStore } from "@/lib/store";
+import { useStore, type Account } from "@/lib/store";
 import { Tooltip } from "@/components/ui/tooltip";
+import { AccountMenu } from "./account-menu";
 import { AppearanceMenu } from "./appearance-menu";
 import { HelpDialog } from "./help-dialog";
 
@@ -56,7 +57,7 @@ function StreakChip() {
   );
 }
 
-export function TopNav() {
+export function TopNav({ initialAccount = null }: { initialAccount?: Account | null }) {
   const isActive = useActive();
 
   return (
@@ -93,6 +94,7 @@ export function TopNav() {
           <StreakChip />
           <HelpDialog />
           <AppearanceMenu />
+          <AccountMenu initialAccount={initialAccount} />
         </div>
       </div>
     </header>
