@@ -1,6 +1,6 @@
 /**
- * Bundled practice content. All prose and code samples are written for Klack,
- * so nothing here depends on a network request or a third-party licence.
+ * Bundled practice content. Original drills live alongside clearly attributed
+ * public-domain book sentences, so generating a test never needs the network.
  */
 
 /** ~240 high-frequency English words, 2-9 letters. The backbone of word tests. */
@@ -38,8 +38,116 @@ const NUMBER_TOKENS = [
   "7", "12", "42", "108", "365", "1024", "2049", "3.14", "60", "99", "1500", "80",
 ];
 
-const SENTENCE_ENDS = [".", ".", ".", "!", "?"];
-const MID_MARKS = [",", ",", ";", ":", "-"];
+const NUMBER_SENTENCES = [
+  "At 7 in the morning, the station clock rang twice before the first train arrived.",
+  "She counted 12 candles on the table, but only 3 of them were still burning.",
+  "The old map placed the river 42 miles north of the town and 8 miles beyond the bridge.",
+  "By page 108, the mystery had introduced 5 suspects and removed every easy answer.",
+  "The captain waited 60 seconds, checked the compass again, and ordered the crew forward.",
+  "Room 2049 stood at the end of a quiet hall on the 20th floor.",
+];
+
+/**
+ * Complete sentences from public-domain books. Punctuation mode draws from
+ * these instead of decorating unrelated words, so the text has grammar,
+ * cadence, and phrases a reader can anticipate.
+ */
+export const CLASSIC_PASSAGES: { source: string; sentences: string[] }[] = [
+  {
+    source: "Pride and Prejudice, Jane Austen",
+    sentences: [
+      "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a wife.",
+      "However little known the feelings or views of such a man may be on his first entering a neighbourhood, this truth is so well fixed in the minds of the surrounding families, that he is considered the rightful property of some one or other of their daughters.",
+    ],
+  },
+  {
+    source: "Alice's Adventures in Wonderland, Lewis Carroll",
+    sentences: [
+      "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do.",
+      "Once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it.",
+      "And what is the use of a book, thought Alice, without pictures or conversations?",
+    ],
+  },
+  {
+    source: "Moby-Dick, Herman Melville",
+    sentences: [
+      "Call me Ishmael.",
+      "Some years ago, never mind how long precisely, having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world.",
+    ],
+  },
+  {
+    source: "A Tale of Two Cities, Charles Dickens",
+    sentences: [
+      "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness.",
+      "It was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness.",
+      "We had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way.",
+    ],
+  },
+  {
+    source: "Jane Eyre, Charlotte Bronte",
+    sentences: [
+      "There was no possibility of taking a walk that day.",
+      "We had been wandering, indeed, in the leafless shrubbery an hour in the morning.",
+      "Since dinner the cold winter wind had brought with it clouds so sombre, and a rain so penetrating, that further outdoor exercise was now out of the question.",
+    ],
+  },
+  {
+    source: "Frankenstein, Mary Shelley",
+    sentences: [
+      "It was on a dreary night of November that I beheld the accomplishment of my toils.",
+      "With an anxiety that almost amounted to agony, I collected the instruments of life around me.",
+      "I might infuse a spark of being into the lifeless thing that lay at my feet.",
+    ],
+  },
+  {
+    source: "The Time Machine, H. G. Wells",
+    sentences: [
+      "The Time Traveller, for so it will be convenient to speak of him, was expounding a recondite matter to us.",
+      "His grey eyes shone and twinkled, and his usually pale face was flushed and animated.",
+      "The fire burned brightly, and the soft radiance of the incandescent lights caught the bubbles that flashed and passed in our glasses.",
+    ],
+  },
+  {
+    source: "The Secret Garden, Frances Hodgson Burnett",
+    sentences: [
+      "When Mary Lennox was sent to Misselthwaite Manor to live with her uncle everybody said she was the most disagreeable-looking child ever seen.",
+      "It was true, too.",
+      "She had a little thin face and a little thin body, thin light hair and a sour expression.",
+    ],
+  },
+  {
+    source: "The Wind in the Willows, Kenneth Grahame",
+    sentences: [
+      "The Mole had been working very hard all the morning, spring-cleaning his little home.",
+      "First with brooms, then with dusters; then on ladders and steps and chairs, with a brush and a pail of whitewash.",
+      "He had dust in his throat and eyes, splashes of whitewash all over his black fur, and an aching back and weary arms.",
+    ],
+  },
+  {
+    source: "Peter Pan, J. M. Barrie",
+    sentences: [
+      "All children, except one, grow up.",
+      "They soon know that they will grow up, and the way Wendy knew was this.",
+      "One day when she was two years old she was playing in a garden, and she plucked another flower and ran with it to her mother.",
+    ],
+  },
+  {
+    source: "The Wonderful Wizard of Oz, L. Frank Baum",
+    sentences: [
+      "Dorothy lived in the midst of the great Kansas prairies, with Uncle Henry, who was a farmer, and Aunt Em, who was the farmer's wife.",
+      "When Dorothy stood in the doorway and looked around, she could see nothing but the great gray prairie on every side.",
+      "Not a tree nor a house broke the broad sweep of flat country that reached to the edge of the sky.",
+    ],
+  },
+  {
+    source: "The Adventures of Sherlock Holmes, Arthur Conan Doyle",
+    sentences: [
+      "To Sherlock Holmes she is always the woman.",
+      "I have seldom heard him mention her under any other name.",
+      "In his eyes she eclipses and predominates the whole of her sex.",
+    ],
+  },
+];
 
 /** Original prose passages: real sentences with capitals and punctuation. */
 export const PROSE_PASSAGES: { text: string; source: string }[] = [
@@ -190,49 +298,135 @@ export type WordTextOptions = {
   numbers: boolean;
 };
 
+export interface GeneratedPassage {
+  text: string;
+  /** Attribution for sentence-based passages. */
+  source?: string;
+}
+
+interface SourcedSentence {
+  text: string;
+  source: string;
+  words: number;
+}
+
+function countWords(text: string): number {
+  return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
+
+function shuffle<T>(values: readonly T[]): T[] {
+  const out = values.slice();
+  for (let index = out.length - 1; index > 0; index--) {
+    const swap = Math.floor(Math.random() * (index + 1));
+    [out[index], out[swap]] = [out[swap], out[index]];
+  }
+  return out;
+}
+
+const CLASSIC_SENTENCES: SourcedSentence[] = CLASSIC_PASSAGES.flatMap((passage) =>
+  passage.sentences.map((text) => ({
+    text,
+    source: passage.source,
+    words: countWords(text),
+  })),
+);
+
 /**
- * Builds a word-list practice string. Punctuation and numbers are woven in
- * rather than appended, so the harder characters land mid-flow where they
- * actually trip people up.
+ * Builds complete, attributable sentences until the requested length is met.
+ * The final sentence may take the text a little past the target. That is
+ * preferable to chopping a sentence in half just to preserve an exact number.
  */
-export function generateWordText({ count, punctuation, numbers }: WordTextOptions): string {
-  const words: string[] = [];
-  let sentenceStart = true;
+export function generateLiteraryPassage(
+  minimumWords: number,
+  numbers = false,
+): GeneratedPassage {
+  const pool = shuffle(CLASSIC_SENTENCES);
+  const selected: SourcedSentence[] = [];
+  const sources = new Set<string>();
+  let total = 0;
+  let cursor = 0;
 
-  for (let i = 0; i < count; i++) {
-    let word = numbers && Math.random() < 0.08 ? pick(NUMBER_TOKENS) : pick(COMMON_WORDS);
+  while (total < minimumWords) {
+    const remaining = minimumWords - total;
+    const unused = pool.slice(cursor);
+    const ranked = unused
+      .map((sentence) => ({ sentence, distance: Math.abs(sentence.words - remaining) }))
+      .sort((a, b) => a.distance - b.distance || a.sentence.words - b.sentence.words);
+    const window = ranked.slice(0, Math.min(4, ranked.length));
+    const chosen = pick(window).sentence;
+    const chosenIndex = pool.indexOf(chosen, cursor);
 
-    if (punctuation) {
-      if (sentenceStart && /^[a-z]/.test(word)) {
-        word = word[0].toUpperCase() + word.slice(1);
-      }
-      sentenceStart = false;
+    [pool[cursor], pool[chosenIndex]] = [pool[chosenIndex], pool[cursor]];
+    cursor++;
+    selected.push(chosen);
+    sources.add(chosen.source);
+    total += chosen.words;
 
-      const isLast = i === count - 1;
-      const roll = Math.random();
-      if (isLast) {
-        word += ".";
-      } else if (roll < 0.1) {
-        word += pick(SENTENCE_ENDS);
-        sentenceStart = true;
-      } else if (roll < 0.2) {
-        word += pick(MID_MARKS);
-      } else if (roll < 0.23) {
-        word = `"${word}"`;
-      } else if (roll < 0.26) {
-        word = `(${word})`;
-      }
+    if (numbers && selected.length % 3 === 0 && total < minimumWords) {
+      const numberText = pick(NUMBER_SENTENCES);
+      selected.push({
+        text: numberText,
+        source: "Klack number passages",
+        words: countWords(numberText),
+      });
+      total += countWords(numberText);
     }
 
-    words.push(word);
+    if (cursor >= pool.length && total < minimumWords) {
+      pool.splice(0, pool.length, ...shuffle(CLASSIC_SENTENCES));
+      cursor = 0;
+    }
+  }
+
+  const sourceList = [...sources];
+  const source =
+    sourceList.length === 1
+      ? sourceList[0]
+      : sourceList.length === 2
+        ? sourceList.join(" + ")
+        : `Public-domain classics (${sourceList.length} works)`;
+
+  return {
+    text: selected.map((sentence) => sentence.text).join(" "),
+    source,
+  };
+}
+
+function generateLooseWords(count: number, numbers: boolean): string {
+  const words: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    words.push(numbers && Math.random() < 0.08 ? pick(NUMBER_TOKENS) : pick(COMMON_WORDS));
   }
 
   return words.join(" ");
 }
 
-/** A long stream for timed tests, generous enough that nobody runs out. */
+/**
+ * Generates either clean word practice or complete literary sentences.
+ * Punctuation mode intentionally changes the content source rather than
+ * sprinkling punctuation onto random words.
+ */
+export function generateWordPassage(options: WordTextOptions): GeneratedPassage {
+  if (options.punctuation) {
+    return generateLiteraryPassage(options.count, options.numbers);
+  }
+  return { text: generateLooseWords(options.count, options.numbers) };
+}
+
+export function generateWordText(options: WordTextOptions): string {
+  return generateWordPassage(options).text;
+}
+
+/** A long stream for timed tests, including fast 120-second attempts. */
+export function generateTimedPassage(
+  opts: Omit<WordTextOptions, "count">,
+): GeneratedPassage {
+  return generateWordPassage({ ...opts, count: 520 });
+}
+
 export function generateTimedText(opts: Omit<WordTextOptions, "count">): string {
-  return generateWordText({ ...opts, count: 220 });
+  return generateTimedPassage(opts).text;
 }
 
 export function randomProse() {

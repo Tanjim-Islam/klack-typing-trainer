@@ -1,6 +1,7 @@
 "use client";
 
-import { Braces, Dumbbell, Hash, Quote, RotateCcw, Timer, Type } from "lucide-react";
+import Link from "next/link";
+import { Braces, Dumbbell, Hash, Quote, RotateCcw, Swords, Timer, Type } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { updateSettings, useStore } from "@/lib/store";
 import { DURATIONS, WORD_COUNTS, type Drill, type TestMode } from "@/lib/types";
@@ -114,6 +115,13 @@ export function ModeBar({
           )}
         />
 
+        <Button variant="outline" size="sm" asChild>
+          <Link href="/race">
+            <Swords className="size-3.5" aria-hidden />
+            1v1
+          </Link>
+        </Button>
+
         <div className="ml-auto flex items-center gap-2">
           <Tooltip content="New text (Tab)">
             <Button variant="ghost" size="iconSm" onClick={onRestart} aria-label="New text">
@@ -197,6 +205,12 @@ export function ModeBar({
               icon={<Hash className="size-3.5" aria-hidden />}
             />
           </div>
+        ) : null}
+
+        {(config.mode === "time" || config.mode === "words") && config.punctuation ? (
+          <p className="basis-full text-xs text-ink-soft">
+            Complete sentences from public-domain books replace the random word stream.
+          </p>
         ) : null}
 
         {config.mode === "quote" || config.mode === "code" ? (

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { queueDrill, useStore } from "@/lib/store";
 import type { Drill, Settings } from "@/lib/types";
 import { Badge, Skeleton } from "@/components/ui/bits";
@@ -11,6 +12,7 @@ import { ModeBar } from "./mode-bar";
 import { OnboardingCard } from "./onboarding-card";
 import { ResultsPanel } from "./results-panel";
 import { TypingSurface } from "./typing-surface";
+import { useFocusStage } from "./use-focus-stage";
 import { useTypingTest, type TestConfig } from "./use-typing-test";
 import { dismissOnboarding } from "@/lib/store";
 
@@ -131,88 +133,120 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
 
   const adaptiveKeys = config.mode === "drill" ? config.keys : undefined;
   const finished = phase === "finished" && result !== null;
+  const focusStage = phase === "running" || phase === "paused";
+
+  useFocusStage(focusStage);
 
   return (
-    <div className="flex flex-col gap-5">
-      {showOnboarding ? <OnboardingCard onDismiss={dismissOnboarding} /> : null}
+    <div
+      className={cn(
+        "flex flex-col gap-5",
+        focusStage &&
+          "fixed inset-x-0 bottom-0 top-15 z-30 overflow-y-auto bg-canvas px-4 sm:px-6",
+      )}
+    >
+      {showOnboarding && !focusStage ? (
+        <OnboardingCard onDismiss={dismissOnboarding} />
+      ) : null}
 
-      <Panel className="overflow-hidden">
-        <div className="border-b border-line px-4 py-4 sm:px-6">
-          <ModeBar
-            config={config}
-            onConfig={setConfig}
-            onRestart={restart}
-            drills={drills}
-          />
-        </div>
-
-        {finished ? null : (
-          <div className="flex flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6">
-            <LiveHud
-              phase={phase}
-              config={config}
-              remaining={remaining}
-              progress={progress}
-              wpm={liveWpm}
-              accuracy={liveAccuracy}
-              typedWords={typedWords}
-              totalWords={totalWords}
-              showStats={settings.showLiveStats}
-            />
-
-            <div className="relative">
-              {/* Visually hidden, but this is the real input: it owns focus and
-                  receives every keystroke. */}
-              <textarea
-                ref={attachInput}
-                value=""
-                onChange={() => undefined}
-                onFocus={() => setFocused(true)}
-                onBlur={() => setFocused(false)}
-                aria-label="Typing test input"
-                aria-describedby="typing-target"
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                className="absolute inset-0 -z-10 size-full resize-none opacity-0"
-              />
-              <p id="typing-target" className="sr-only">
-                Type the following text. Press Tab for new text, or Escape to start
-                this text again. Text to type: {text}
-              </p>
-
-              <TypingSurface
-                text={text}
-                states={engine.states}
-                cursor={engine.cursor}
-                caret={settings.caret}
-                textSize={settings.textSize}
-                veil={veil}
-                blinking={phase !== "running"}
-                onActivate={resume}
-              />
-            </div>
-
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-4">
-              {adaptiveKeys?.length ? (
-                <Badge tone="accent">
-                  <Sparkles className="size-3" aria-hidden />
-                  Targeting {adaptiveKeys.map((k) => (k === " " ? "space" : k)).join(" ")}
-                </Badge>
-              ) : meta ? (
-                <Badge tone="neutral">{meta}</Badge>
-              ) : null}
-
-              <p className="text-xs text-ink-faint">
-                {settings.stopOnError
-                  ? "Stop on error is on: mistakes must be fixed before you can move on."
-                  : "Press space mid-word to skip it. Skipped letters count as misses."}
-              </p>
-            </div>
-          </div>
+      <div
+        className={cn(
+          focusStage && "mx-auto flex min-h-full w-full max-w-5xl items-center py-8 sm:py-12",
         )}
-      </Panel>
+      >
+        <Panel
+          className={cn(
+            "overflow-hidden",
+            focusStage && "w-full border-0 bg-transparent shadow-none",
+          )}
+        >
+          {!focusStage ? (
+            <div className="border-b border-line px-4 py-4 sm:px-6">
+              <ModeBar
+                config={config}
+                onConfig={setConfig}
+                onRestart={restart}
+                drills={drills}
+              />
+            </div>
+          ) : null}
+
+          {finished ? null : (
+            <div
+              className={cn(
+                "flex flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6",
+                focusStage && "gap-8 px-0 py-0 sm:px-0 sm:py-0",
+              )}
+            >
+              <LiveHud
+                phase={phase}
+                config={config}
+                remaining={remaining}
+                progress={progress}
+                wpm={liveWpm}
+                accuracy={liveAccuracy}
+                typedWords={typedWords}
+                totalWords={totalWords}
+                showStats={settings.showLiveStats}
+              />
+
+              <div className="relative">
+                {/* Visually hidden, but this is the real input: it owns focus and
+                    receives every keystroke. */}
+                <textarea
+                  ref={attachInput}
+                  value=""
+                  onChange={() => undefined}
+                  onFocus={() => setFocused(true)}
+                  onBlur={() => setFocused(false)}
+                  aria-label="Typing test input"
+                  aria-describedby="typing-target"
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  className="absolute inset-0 -z-10 size-full resize-none opacity-0"
+                />
+                <p id="typing-target" className="sr-only">
+                  Type the following text. Press Tab for new text, or Escape to start
+                  this text again. Text to type: {text}
+                </p>
+
+                <TypingSurface
+                  text={text}
+                  states={engine.states}
+                  cursor={engine.cursor}
+                  caret={settings.caret}
+                  textSize={settings.textSize}
+                  veil={veil}
+                  blinking={phase !== "running"}
+                  onActivate={resume}
+                />
+              </div>
+
+              {!focusStage ? (
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-line pt-4">
+                  {adaptiveKeys?.length ? (
+                    <Badge tone="accent">
+                      <Sparkles className="size-3" aria-hidden />
+                      Targeting{" "}
+                      {adaptiveKeys.map((k) => (k === " " ? "space" : k)).join(" ")}
+                    </Badge>
+                  ) : meta ? (
+                    <Badge tone="neutral">{meta}</Badge>
+                  ) : null}
+
+                  <p className="text-xs text-ink-faint">
+                    {settings.stopOnError
+                      ? "Stop on error is on: mistakes must be fixed before you can move on."
+                      : "Press space mid-word to skip it. Skipped letters count as misses."}
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          )}
+        </Panel>
+      </div>
 
       {finished && result ? (
         <ResultsPanel

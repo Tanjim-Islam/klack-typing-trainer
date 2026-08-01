@@ -24,7 +24,7 @@ const CHAR_CLASS: Record<string, string> = {
   s: "text-type-wrong/80 line-through decoration-2",
 };
 
-const VISIBLE_LINES = 3;
+const VISIBLE_LINES = 4;
 
 const Word = memo(function Word({
   start,
@@ -61,6 +61,8 @@ export interface TypingSurfaceProps {
   /** Blink only while waiting; a blinking caret mid-run is just noise. */
   blinking: boolean;
   onActivate: () => void;
+  focusTitle?: string;
+  focusHint?: string;
 }
 
 export function TypingSurface({
@@ -72,6 +74,8 @@ export function TypingSurface({
   veil,
   blinking,
   onActivate,
+  focusTitle,
+  focusHint,
 }: TypingSurfaceProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
@@ -195,7 +199,7 @@ export function TypingSurface({
             ) : (
               <>
                 <MousePointerClick className="size-4 text-primary" aria-hidden />
-                Click here to focus
+                {focusTitle ?? "Click here to focus"}
               </>
             )}
           </span>
@@ -206,7 +210,9 @@ export function TypingSurface({
                 click to carry on.
               </>
             ) : (
-              <>Then just start typing. The timer waits for your first key.</>
+              <>
+                {focusHint ?? "Then just start typing. The timer waits for your first key."}
+              </>
             )}
           </span>
         </button>

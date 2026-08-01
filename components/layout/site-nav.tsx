@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Dumbbell, Flame, Keyboard, LineChart, Settings2 } from "lucide-react";
+import { Dumbbell, Flame, Keyboard, LineChart, Settings2, Swords } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { currentStreak } from "@/lib/analysis";
 import { useStore, type Account } from "@/lib/store";
@@ -13,6 +13,7 @@ import { HelpDialog } from "./help-dialog";
 
 const LINKS = [
   { href: "/", label: "Type", icon: Keyboard },
+  { href: "/race", label: "1v1", icon: Swords },
   { href: "/progress", label: "Progress", icon: LineChart },
   { href: "/drills", label: "Drills", icon: Dumbbell },
   { href: "/settings", label: "Settings", icon: Settings2 },
@@ -107,9 +108,10 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Main"
+      data-bottom-nav
       className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-canvas/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md md:hidden"
     >
-      <ul className="grid grid-cols-4">
+      <ul className="grid grid-cols-5">
         {LINKS.map((link) => {
           const active = isActive(link.href);
           return (

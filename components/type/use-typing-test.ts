@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  generateTimedText,
-  generateWordText,
+  generateTimedPassage,
+  generateWordPassage,
   randomCode,
   randomProse,
 } from "@/lib/content";
@@ -45,23 +45,30 @@ interface LoadedTest {
 
 function loadTest(config: TestConfig): LoadedTest {
   switch (config.mode) {
-    case "time":
+    case "time": {
+      const passage = generateTimedPassage({
+        punctuation: config.punctuation,
+        numbers: config.numbers,
+      });
       return {
-        text: generateTimedText({
-          punctuation: config.punctuation,
-          numbers: config.numbers,
-        }),
+        text: passage.text,
         label: `${config.seconds}s`,
+        meta: passage.source,
       };
-    case "words":
+    }
+    case "words": {
+      const passage = generateWordPassage({
+        count: config.count,
+        punctuation: config.punctuation,
+        numbers: config.numbers,
+      });
+      const actualWords = passage.text.trim().split(/\s+/).length;
       return {
-        text: generateWordText({
-          count: config.count,
-          punctuation: config.punctuation,
-          numbers: config.numbers,
-        }),
-        label: `${config.count} words`,
+        text: passage.text,
+        label: `${actualWords} words`,
+        meta: passage.source,
       };
+    }
     case "quote": {
       const passage = randomProse();
       return { text: passage.text, label: "Prose", meta: passage.source };

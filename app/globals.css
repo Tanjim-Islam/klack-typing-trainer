@@ -352,24 +352,24 @@
    -------------------------------------------------------------------------- */
 
 .type-surface {
-  --type-lh: 2.25rem;
-  --type-fs: 1.0625rem;
-  height: calc(var(--type-lh) * 3);
+  --type-lh: 2.7rem;
+  --type-fs: 1.25rem;
+  height: calc(var(--type-lh) * 4);
 }
 
 .type-surface[data-size="lg"] {
-  --type-lh: 2.6rem;
-  --type-fs: 1.25rem;
+  --type-lh: 3.05rem;
+  --type-fs: 1.45rem;
 }
 
 @media (min-width: 40rem) {
   .type-surface {
-    --type-lh: 2.6rem;
-    --type-fs: 1.375rem;
+    --type-lh: 3.15rem;
+    --type-fs: 1.625rem;
   }
   .type-surface[data-size="lg"] {
-    --type-lh: 3.25rem;
-    --type-fs: 1.75rem;
+    --type-lh: 3.6rem;
+    --type-fs: 1.9rem;
   }
 }
 
@@ -397,6 +397,16 @@
 }
 .dark [data-swatch="cobalt"] {
   background-color: #7ba7f2;
+}
+
+/* Runtime-only test state. Keep these rules unlayered so Tailwind cannot
+   discard or outrank them during compilation. */
+:root[data-test-focus="true"] body {
+  overflow: hidden;
+}
+
+:root[data-test-focus="true"] [data-bottom-nav] {
+  display: none;
 }
 
 /* ==========================================================================
