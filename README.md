@@ -89,9 +89,10 @@ Generated text can optionally include punctuation and numbers.
 
 ## Behaviour worth knowing
 
-- **Tab** loads fresh text. **Escape** restarts the current text.
+- **Tab** loads fresh text without leaving focus mode. **Escape** resets the test and
+  leaves focus mode. **Ctrl+Backspace** clears the current unfinished or incorrect word,
+  but never erases a fully correct word.
   **Shift+Tab** moves focus out of the typing field.
-- **Ctrl/Alt+Backspace** deletes back to the start of the word.
 - Pressing **space** mid-word skips the rest of it. Skipped characters are struck
   through and count as misses, so the shortcut is a trade-off rather than free.
 - The clock **pauses** when the test loses focus, the window blurs, or the tab is

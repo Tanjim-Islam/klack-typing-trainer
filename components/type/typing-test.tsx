@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { queueDrill, useStore } from "@/lib/store";
@@ -64,6 +64,10 @@ function defaultConfig(settings: Settings, drills: Drill[]): TestConfig {
 
 function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
   const { settings, drills, onboarded, results } = useStore();
+  const [focused, setFocused] = useState(false);
+  const [keepFocusStage, setKeepFocusStage] = useState(false);
+  const holdFocusStage = useCallback(() => setKeepFocusStage(true), []);
+
   const {
     phase,
     engine,
@@ -83,9 +87,19 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
     restart,
     repeat,
     resume,
-  } = useTypingTest(initialConfig);
+  } = useTypingTest(initialConfig, {
+    onFocusedRestart: holdFocusStage,
+  });
 
-  const [focused, setFocused] = useState(false);
+  const restartFromResults = useCallback(() => {
+    setKeepFocusStage(false);
+    restart();
+  }, [restart]);
+
+  const repeatFromResults = useCallback(() => {
+    setKeepFocusStage(false);
+    repeat();
+  }, [repeat]);
 
   const showOnboarding = !onboarded && results.length === 0;
 
@@ -107,15 +121,15 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Tab") {
         event.preventDefault();
-        restart();
+        restartFromResults();
       } else if (event.key === "Escape") {
         event.preventDefault();
-        repeat();
+        repeatFromResults();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase, restart, repeat]);
+  }, [phase, repeatFromResults, restartFromResults]);
 
   const totalWords = useMemo(
     () => (text.trim() ? text.trim().split(/\s+/).length : 0),
@@ -133,7 +147,26 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
 
   const adaptiveKeys = config.mode === "drill" ? config.keys : undefined;
   const finished = phase === "finished" && result !== null;
-  const focusStage = phase === "running" || phase === "paused";
+  const focusStage =
+    phase === "running" ||
+    phase === "paused" ||
+    (phase === "idle" && keepFocusStage);
+
+  // Escape belongs to the focused presentation, not only to the hidden input.
+  // Listening on window also lets a paused user leave after focus moved to the nav.
+  useEffect(() => {
+    if (!focusStage) return;
+
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      event.preventDefault();
+      setKeepFocusStage(false);
+      repeat();
+    };
+
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [focusStage, repeat]);
 
   useFocusStage(focusStage);
 
@@ -157,7 +190,7 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
         <Panel
           className={cn(
             "overflow-hidden",
-            focusStage && "w-full border-0 bg-transparent shadow-none",
+            focusStage && "w-full overflow-visible border-0 bg-transparent shadow-none",
           )}
         >
           {!focusStage ? (
@@ -175,7 +208,7 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
             <div
               className={cn(
                 "flex flex-col gap-5 px-4 py-5 sm:px-6 sm:py-6",
-                focusStage && "gap-8 px-0 py-0 sm:px-0 sm:py-0",
+                focusStage && "gap-8 px-1 pb-0 pt-1 sm:px-1 sm:pb-0 sm:pt-1",
               )}
             >
               <LiveHud
@@ -208,8 +241,9 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
                   className="absolute inset-0 -z-10 size-full resize-none opacity-0"
                 />
                 <p id="typing-target" className="sr-only">
-                  Type the following text. Press Tab for new text, or Escape to start
-                  this text again. Text to type: {text}
+                  Type the following text. Press Tab for fresh text without leaving
+                  focus mode, or Escape to reset the test and leave focus mode. Text to
+                  type: {text}
                 </p>
 
                 <TypingSurface
@@ -253,8 +287,8 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
           result={result}
           recorded={recorded}
           isPersonalBest={isPersonalBest}
-          onNext={restart}
-          onRepeat={repeat}
+          onNext={restartFromResults}
+          onRepeat={repeatFromResults}
         />
       ) : null}
     </div>

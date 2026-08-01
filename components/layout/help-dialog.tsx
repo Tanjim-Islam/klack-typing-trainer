@@ -8,10 +8,10 @@ import { Kbd } from "@/components/ui/bits";
 import { Tooltip } from "@/components/ui/tooltip";
 
 const SHORTCUTS: { keys: string[]; action: string }[] = [
-  { keys: ["Tab"], action: "Restart with fresh text" },
-  { keys: ["Esc"], action: "Reset the current test" },
+  { keys: ["Tab"], action: "Restart with fresh text and stay focused" },
+  { keys: ["Esc"], action: "Reset the test and leave focus mode" },
   { keys: ["Shift", "Tab"], action: "Move focus out of the typing field" },
-  { keys: ["Ctrl", "Backspace"], action: "Delete the whole word" },
+  { keys: ["Ctrl", "Backspace"], action: "Clear the current unfinished word" },
   { keys: ["Space"], action: "Skip to the next word (counts as a miss)" },
   { keys: ["Enter"], action: "Resume after the test loses focus" },
 ];

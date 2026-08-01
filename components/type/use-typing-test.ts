@@ -119,7 +119,15 @@ export interface TypingTest {
   resume: () => void;
 }
 
-export function useTypingTest(initialConfig: TestConfig): TypingTest {
+interface TypingTestOptions {
+  /** Keeps the distraction-free stage mounted when Tab loads fresh text. */
+  onFocusedRestart?: () => void;
+}
+
+export function useTypingTest(
+  initialConfig: TestConfig,
+  { onFocusedRestart }: TypingTestOptions = {},
+): TypingTest {
   const { settings, results } = useStore();
 
   const [config, setConfigState] = useState<TestConfig>(initialConfig);
@@ -352,12 +360,10 @@ export function useTypingTest(initialConfig: TestConfig): TypingTest {
       // move back out to the rest of the page.
       if (event.key === "Tab" && !event.shiftKey) {
         event.preventDefault();
+        if (phaseRef.current === "running" || phaseRef.current === "paused") {
+          onFocusedRestart?.();
+        }
         restart();
-        return;
-      }
-      if (event.key === "Escape") {
-        event.preventDefault();
-        repeat();
         return;
       }
       if (event.key === "Backspace") {
@@ -395,7 +401,7 @@ export function useTypingTest(initialConfig: TestConfig): TypingTest {
       inputEl.removeEventListener("keydown", onKeyDown);
       inputEl.removeEventListener("beforeinput", onBeforeInput);
     };
-  }, [inputEl, pushBackspace, pushChar, repeat, restart, resume]);
+  }, [inputEl, onFocusedRestart, pushBackspace, pushChar, restart, resume]);
 
   // Pause whenever the test loses focus, so time away never counts against a
   // score and nobody returns to a finished 60 second test.

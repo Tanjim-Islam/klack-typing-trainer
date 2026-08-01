@@ -25,6 +25,34 @@ const CHAR_CLASS: Record<string, string> = {
 };
 
 const VISIBLE_LINES = 4;
+const CARET_FOLLOW_TAU_MS = 28;
+const MAX_FRAME_DELTA_MS = 50;
+const STALE_FRAME_MS = 120;
+const MOTION_EPSILON_PX = 0.05;
+
+interface FollowerMotion {
+  x: number;
+  y: number;
+  trackY: number;
+  targetX: number;
+  targetY: number;
+  targetTrackY: number;
+  lastFrame: number | null;
+  initialized: boolean;
+}
+
+function createFollowerMotion(): FollowerMotion {
+  return {
+    x: 0,
+    y: 0,
+    trackY: 0,
+    targetX: 0,
+    targetY: 0,
+    targetTrackY: 0,
+    lastFrame: null,
+    initialized: false,
+  };
+}
 
 const Word = memo(function Word({
   start,
@@ -80,15 +108,93 @@ export function TypingSurface({
   const viewportRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const caretRef = useRef<HTMLSpanElement>(null);
+  const frameRef = useRef<number | null>(null);
+  const motionRef = useRef<FollowerMotion>(createFollowerMotion());
+  const reducedMotionQueryRef = useRef<MediaQueryList | null>(null);
+  const previousCursorRef = useRef(cursor);
+  const previousTextRef = useRef(text);
+  const previousTextSizeRef = useRef(textSize);
 
   const words = useWords(text);
+
+  const reduceMotion = useCallback(() => {
+    reducedMotionQueryRef.current ??= window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    );
+
+    return (
+      reducedMotionQueryRef.current.matches ||
+      document.documentElement.dataset.motion === "reduced"
+    );
+  }, []);
+
+  const drawFollower = useCallback(() => {
+    const caretEl = caretRef.current;
+    const track = trackRef.current;
+    if (!caretEl || !track) return;
+
+    const motion = motionRef.current;
+    caretEl.style.transform = `translate3d(${motion.x}px, ${motion.y}px, 0)`;
+    track.style.transform = `translate3d(0, ${motion.trackY}px, 0)`;
+  }, []);
+
+  const snapFollower = useCallback(() => {
+    if (frameRef.current !== null) {
+      window.cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+
+    const motion = motionRef.current;
+    motion.x = motion.targetX;
+    motion.y = motion.targetY;
+    motion.trackY = motion.targetTrackY;
+    motion.lastFrame = null;
+    drawFollower();
+  }, [drawFollower]);
+
+  const animateFollower = useCallback(
+    function animateFrame(timestamp: number) {
+      frameRef.current = null;
+
+      const motion = motionRef.current;
+      const frameDelta =
+        motion.lastFrame === null ? 1000 / 60 : timestamp - motion.lastFrame;
+
+      if (reduceMotion() || frameDelta > STALE_FRAME_MS) {
+        snapFollower();
+        return;
+      }
+
+      motion.lastFrame = timestamp;
+      const blend =
+        1 - Math.exp(-Math.min(frameDelta, MAX_FRAME_DELTA_MS) / CARET_FOLLOW_TAU_MS);
+
+      motion.x += (motion.targetX - motion.x) * blend;
+      motion.y += (motion.targetY - motion.y) * blend;
+      motion.trackY += (motion.targetTrackY - motion.trackY) * blend;
+
+      const settled =
+        Math.abs(motion.targetX - motion.x) < MOTION_EPSILON_PX &&
+        Math.abs(motion.targetY - motion.y) < MOTION_EPSILON_PX &&
+        Math.abs(motion.targetTrackY - motion.trackY) < MOTION_EPSILON_PX;
+
+      if (settled) {
+        snapFollower();
+        return;
+      }
+
+      drawFollower();
+      frameRef.current = window.requestAnimationFrame(animateFrame);
+    },
+    [drawFollower, reduceMotion, snapFollower],
+  );
 
   /**
    * Caret placement and line scrolling are pure DOM measurement, so they are
    * written straight to the elements. Keeping them out of React state means a
    * keystroke re-renders one word rather than the whole paragraph.
    */
-  const paint = useCallback(() => {
+  const paint = useCallback((immediate = false) => {
     const viewport = viewportRef.current;
     const track = trackRef.current;
     const caretEl = caretRef.current;
@@ -105,7 +211,11 @@ export function TypingSurface({
 
     if (!target) {
       if (caretEl) caretEl.style.opacity = "0";
-      track.style.transform = "translateY(0px)";
+      motionRef.current.targetX = 0;
+      motionRef.current.targetY = 0;
+      motionRef.current.targetTrackY = 0;
+      motionRef.current.initialized = false;
+      snapFollower();
       return;
     }
 
@@ -115,7 +225,6 @@ export function TypingSurface({
 
     if (caretEl) {
       caretEl.style.opacity = "";
-      caretEl.style.transform = `translate(${x}px, ${y}px)`;
       caretEl.style.width = caret === "line" ? "2px" : `${Math.max(target.offsetWidth, 6)}px`;
       caretEl.style.height = caret === "underline" ? "2px" : `${lineHeight * 0.76}px`;
       caretEl.style.marginTop =
@@ -125,15 +234,53 @@ export function TypingSurface({
     // Park the active line on the second row so the eye stays still while the
     // text scrolls underneath it.
     const line = Math.round(y / lineHeight);
-    track.style.transform = `translateY(${-Math.max(0, line - 1) * lineHeight}px)`;
-  }, [caret, cursor, text]);
+    const motion = motionRef.current;
+    motion.targetX = x;
+    motion.targetY = y;
+    motion.targetTrackY = -Math.max(0, line - 1) * lineHeight;
 
-  useLayoutEffect(paint, [paint, words, textSize]);
+    const restarted = cursor === 0 && previousCursorRef.current !== 0;
+    const contentChanged = text !== previousTextRef.current;
+    const sizeChanged = textSize !== previousTextSizeRef.current;
+    const shouldSnap =
+      immediate ||
+      !motion.initialized ||
+      restarted ||
+      contentChanged ||
+      sizeChanged ||
+      reduceMotion();
+
+    previousCursorRef.current = cursor;
+    previousTextRef.current = text;
+    previousTextSizeRef.current = textSize;
+    motion.initialized = true;
+
+    if (shouldSnap) {
+      snapFollower();
+    } else if (frameRef.current === null) {
+      motion.lastFrame = null;
+      frameRef.current = window.requestAnimationFrame(animateFollower);
+    }
+  }, [animateFollower, caret, cursor, reduceMotion, snapFollower, text, textSize]);
+
+  useLayoutEffect(() => {
+    paint();
+  }, [paint, words, textSize]);
 
   useEffect(() => {
-    window.addEventListener("resize", paint);
-    return () => window.removeEventListener("resize", paint);
+    const handleResize = () => paint(true);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, [paint]);
+
+  useEffect(
+    () => () => {
+      if (frameRef.current !== null) {
+        window.cancelAnimationFrame(frameRef.current);
+      }
+    },
+    [],
+  );
 
   return (
     <div
@@ -150,8 +297,7 @@ export function TypingSurface({
         ref={trackRef}
         aria-hidden
         className={cn(
-          "type-track relative font-mono font-medium tracking-[0.005em]",
-          "transition-transform duration-200 ease-key",
+          "type-track relative font-mono font-medium tracking-[0.005em] will-change-transform",
           veil !== "none" && "blur-[2.5px]",
         )}
       >
@@ -168,7 +314,7 @@ export function TypingSurface({
           ref={caretRef}
           aria-hidden
           className={cn(
-            "pointer-events-none absolute left-0 top-0 transition-transform duration-100 ease-key",
+            "pointer-events-none absolute left-0 top-0 will-change-transform",
             veil !== "none" && "invisible",
             blinking && "animate-caret",
             caret === "line" && "rounded-full bg-caret",

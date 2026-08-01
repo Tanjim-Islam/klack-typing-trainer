@@ -138,14 +138,47 @@ export function applyChar(
   };
 }
 
-/** Steps back one character, or to the start of the previous word. */
+function rangeIsCorrect(states: CharState[], start: number, end: number): boolean {
+  for (let index = start; index < end; index++) {
+    if (states[index] !== "correct") return false;
+  }
+  return true;
+}
+
+/** Steps back one character, or clears the current unfinished/incorrect word. */
 export function applyBackspace(state: EngineState, wholeWord = false): EngineState {
   if (state.cursor === 0) return state;
 
   let target = state.cursor - 1;
   if (wholeWord) {
-    while (target > 0 && state.target[target] === " ") target--;
-    while (target > 0 && state.target[target - 1] !== " ") target--;
+    const previousIndex = state.cursor - 1;
+
+    if (state.target[previousIndex] === " ") {
+      const previousWordStart = state.target.lastIndexOf(" ", previousIndex - 1) + 1;
+      const previousWordCorrect = rangeIsCorrect(
+        state.states,
+        previousWordStart,
+        previousIndex,
+      );
+
+      // A committed correct word is a boundary, just like Monkeytype's default
+      // behavior. If only its separator was wrong, clear the separator without
+      // touching the word itself. Incorrect words remain available for repair.
+      if (previousWordCorrect && state.states[previousIndex] === "correct") return state;
+      target = previousWordCorrect ? previousIndex : previousWordStart;
+    } else {
+      const currentWordStart = state.target.lastIndexOf(" ", previousIndex) + 1;
+      const nextSpace = state.target.indexOf(" ", currentWordStart);
+      const currentWordEnd = nextSpace === -1 ? state.target.length : nextSpace;
+      const currentWordCorrect =
+        state.cursor >= currentWordEnd &&
+        rangeIsCorrect(state.states, currentWordStart, currentWordEnd);
+
+      // Ctrl+Backspace is for repairing the word being typed. Once every
+      // character in that word is correct, it cannot erase the word wholesale.
+      if (currentWordCorrect) return state;
+      target = currentWordStart;
+    }
   }
 
   const states = state.states.slice();
