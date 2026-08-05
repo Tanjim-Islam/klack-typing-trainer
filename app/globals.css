@@ -415,12 +415,11 @@
 
 @keyframes klack-caret {
   0%,
-  45% {
-    opacity: 1;
-  }
-  55%,
   100% {
-    opacity: 0.12;
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
   }
 }
 
@@ -456,7 +455,7 @@
 }
 
 .animate-caret {
-  animation: klack-caret 1.05s steps(1, end) infinite;
+  animation: klack-caret 1s linear infinite;
 }
 
 .animate-rise {

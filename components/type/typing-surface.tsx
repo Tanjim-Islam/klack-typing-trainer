@@ -25,18 +25,22 @@ const CHAR_CLASS: Record<string, string> = {
 };
 
 const VISIBLE_LINES = 4;
-const CARET_FOLLOW_TAU_MS = 28;
-const MAX_FRAME_DELTA_MS = 50;
+// Match Monkeytype's medium smooth-caret timing and power curve.
+const CARET_MOVE_DURATION_MS = 100;
+const CARET_EASE_POWER = 1.25;
 const STALE_FRAME_MS = 120;
-const MOTION_EPSILON_PX = 0.05;
 
 interface FollowerMotion {
   x: number;
   y: number;
   trackY: number;
+  startX: number;
+  startY: number;
+  startTrackY: number;
   targetX: number;
   targetY: number;
   targetTrackY: number;
+  startedAt: number | null;
   lastFrame: number | null;
   initialized: boolean;
 }
@@ -46,12 +50,26 @@ function createFollowerMotion(): FollowerMotion {
     x: 0,
     y: 0,
     trackY: 0,
+    startX: 0,
+    startY: 0,
+    startTrackY: 0,
     targetX: 0,
     targetY: 0,
     targetTrackY: 0,
+    startedAt: null,
     lastFrame: null,
     initialized: false,
   };
+}
+
+function easeInOutPower(progress: number) {
+  return progress < 0.5
+    ? Math.pow(progress * 2, CARET_EASE_POWER) / 2
+    : 1 - Math.pow((1 - progress) * 2, CARET_EASE_POWER) / 2;
+}
+
+function mix(from: number, to: number, progress: number) {
+  return from + (to - from) * progress;
 }
 
 const Word = memo(function Word({
@@ -148,6 +166,10 @@ export function TypingSurface({
     motion.x = motion.targetX;
     motion.y = motion.targetY;
     motion.trackY = motion.targetTrackY;
+    motion.startX = motion.targetX;
+    motion.startY = motion.targetY;
+    motion.startTrackY = motion.targetTrackY;
+    motion.startedAt = null;
     motion.lastFrame = null;
     drawFollower();
   }, [drawFollower]);
@@ -157,28 +179,26 @@ export function TypingSurface({
       frameRef.current = null;
 
       const motion = motionRef.current;
-      const frameDelta =
-        motion.lastFrame === null ? 1000 / 60 : timestamp - motion.lastFrame;
+      const frameDelta = motion.lastFrame === null ? 0 : timestamp - motion.lastFrame;
 
       if (reduceMotion() || frameDelta > STALE_FRAME_MS) {
         snapFollower();
         return;
       }
 
+      motion.startedAt ??= timestamp;
       motion.lastFrame = timestamp;
-      const blend =
-        1 - Math.exp(-Math.min(frameDelta, MAX_FRAME_DELTA_MS) / CARET_FOLLOW_TAU_MS);
+      const progress = Math.min(
+        (timestamp - motion.startedAt) / CARET_MOVE_DURATION_MS,
+        1,
+      );
+      const eased = easeInOutPower(progress);
 
-      motion.x += (motion.targetX - motion.x) * blend;
-      motion.y += (motion.targetY - motion.y) * blend;
-      motion.trackY += (motion.targetTrackY - motion.trackY) * blend;
+      motion.x = mix(motion.startX, motion.targetX, eased);
+      motion.y = mix(motion.startY, motion.targetY, eased);
+      motion.trackY = mix(motion.startTrackY, motion.targetTrackY, eased);
 
-      const settled =
-        Math.abs(motion.targetX - motion.x) < MOTION_EPSILON_PX &&
-        Math.abs(motion.targetY - motion.y) < MOTION_EPSILON_PX &&
-        Math.abs(motion.targetTrackY - motion.trackY) < MOTION_EPSILON_PX;
-
-      if (settled) {
+      if (progress >= 1) {
         snapFollower();
         return;
       }
@@ -235,9 +255,14 @@ export function TypingSurface({
     // text scrolls underneath it.
     const line = Math.round(y / lineHeight);
     const motion = motionRef.current;
+    motion.startX = motion.x;
+    motion.startY = motion.y;
+    motion.startTrackY = motion.trackY;
     motion.targetX = x;
     motion.targetY = y;
     motion.targetTrackY = -Math.max(0, line - 1) * lineHeight;
+    motion.startedAt = performance.now();
+    motion.lastFrame = motion.startedAt;
 
     const restarted = cursor === 0 && previousCursorRef.current !== 0;
     const contentChanged = text !== previousTextRef.current;
@@ -258,7 +283,6 @@ export function TypingSurface({
     if (shouldSnap) {
       snapFollower();
     } else if (frameRef.current === null) {
-      motion.lastFrame = null;
       frameRef.current = window.requestAnimationFrame(animateFollower);
     }
   }, [animateFollower, caret, cursor, reduceMotion, snapFollower, text, textSize]);
