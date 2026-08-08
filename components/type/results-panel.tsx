@@ -33,15 +33,17 @@ export function ResultsPanel({
 }) {
   const worst = worstKeysInResult(result);
   const hasConsistency = result.samples.length >= 3;
+  const elapsedLabel = formatDuration(result.elapsedMs);
+  const showElapsed = result.mode !== "time" || result.label !== elapsedLabel;
 
   return (
     <Panel className="animate-rise overflow-hidden">
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3.5 sm:px-6">
         <Badge tone="primary">{MODE_LABELS[result.mode]}</Badge>
         <span className="text-sm font-medium text-ink">{result.label}</span>
-        <span className="text-sm text-ink-faint">
-          {formatDuration(result.elapsedMs)}
-        </span>
+        {showElapsed ? (
+          <span className="text-sm text-ink-faint">{elapsedLabel}</span>
+        ) : null}
         {isPersonalBest ? (
           <Badge tone="accent" className="ml-auto">
             <Trophy className="size-3" aria-hidden />
