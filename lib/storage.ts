@@ -29,7 +29,7 @@ const QUARANTINE_KEY = `${KEY_PREFIX}.unreadable`;
 
 /** Keeping the newest 500 tests is plenty of history and keeps writes fast. */
 export const MAX_RESULTS = 500;
-/** One sample per second; a 120s test needs 120. Trim anything longer. */
+/** One point per second; a 120s test needs 120. Trim anything longer. */
 export const MAX_SAMPLES = 140;
 
 function seedDrills(): Drill[] {
@@ -112,9 +112,18 @@ export function trimForStorage(data: StoreData): StoreData {
   const results = [...data.results]
     .sort((a, b) => b.at - a.at)
     .slice(0, MAX_RESULTS)
-    .map((r) =>
-      r.samples.length > MAX_SAMPLES ? { ...r, samples: r.samples.slice(0, MAX_SAMPLES) } : r,
-    );
+    .map((r) => {
+      const samples = r.samples.slice(0, MAX_SAMPLES);
+      const pointCount = Math.min(r.performance.elapsedMs.length, MAX_SAMPLES);
+      const performance = {
+        elapsedMs: r.performance.elapsedMs.slice(0, pointCount),
+        wpm: r.performance.wpm.slice(0, pointCount),
+        rawWpm: r.performance.rawWpm.slice(0, pointCount),
+        burst: r.performance.burst.slice(0, pointCount),
+        errors: r.performance.errors.slice(0, pointCount),
+      };
+      return { ...r, samples, performance };
+    });
   return { ...data, results };
 }
 

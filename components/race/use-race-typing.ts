@@ -4,12 +4,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyBackspace,
   applyChar,
+  buildPerformanceHistory,
   buildResult,
   countChars,
+  createPerformanceSnapshot,
   createEngine,
   isRecordable,
   MAX_WPM,
   type EngineState,
+  type PerformanceSnapshot,
 } from "@/lib/engine";
 import { createId } from "@/lib/format";
 import type { RaceFinish, RaceStart } from "@/lib/race";
@@ -49,8 +52,7 @@ export function useRaceTyping({
   const phaseRef = useRef<RaceTypingPhase>("waiting");
   const startRef = useRef<RaceStart | null>(null);
   const startAtRef = useRef(0);
-  const samplesRef = useRef<number[]>([]);
-  const lastSampleCharsRef = useRef(0);
+  const performanceRef = useRef<PerformanceSnapshot[]>([]);
   const onProgressRef = useRef(onProgress);
   const onFinishRef = useRef(onFinish);
 
@@ -84,13 +86,15 @@ export function useRaceTyping({
       if (!activeStart) return;
 
       const elapsed = cappedElapsed ?? elapsedNow();
+      const history = buildPerformanceHistory(performanceRef.current, elapsed);
       const built = buildResult({
         id: createId(),
         mode: "time",
         label: `1v1 ${activeStart.config.duration}s`,
         state,
         elapsedMs: elapsed,
-        samples: samplesRef.current,
+        samples: history.samples,
+        performance: history.performance,
         at: Date.now(),
       });
 
@@ -127,8 +131,7 @@ export function useRaceTyping({
       const fresh = createEngine(start.config.text);
       engineRef.current = fresh;
       setEngine(fresh);
-      samplesRef.current = [];
-      lastSampleCharsRef.current = 0;
+      performanceRef.current = [];
       startAtRef.current = sharedStartAt;
       setElapsedMs(0);
       setResult(null);
@@ -162,14 +165,6 @@ export function useRaceTyping({
     const tick = () => {
       const elapsed = Math.min(limit, elapsedNow());
       setElapsedMs(elapsed);
-
-      const seconds = Math.floor(elapsed / 1000);
-      while (samplesRef.current.length < seconds) {
-        const correct = countChars(engineRef.current).correct;
-        const delta = correct - lastSampleCharsRef.current;
-        lastSampleCharsRef.current = correct;
-        samplesRef.current.push(Math.max(0, (delta / 5) * 60));
-      }
 
       if (elapsed >= limit) finish(engineRef.current, limit);
     };
@@ -207,22 +202,27 @@ export function useRaceTyping({
       if (next === previous) return;
 
       engineRef.current = next;
+      performanceRef.current.push(createPerformanceSnapshot(next, elapsedNow()));
       setEngine(next);
       if (settings.sound) {
         playClick(next.rejections > previous.rejections ? "error" : "key");
       }
       if (next.complete) finish(next);
     },
-    [finish, settings.sound],
+    [elapsedNow, finish, settings.sound],
   );
 
-  const pushBackspace = useCallback((wholeWord: boolean) => {
-    if (phaseRef.current !== "running") return;
-    const next = applyBackspace(engineRef.current, wholeWord);
-    if (next === engineRef.current) return;
-    engineRef.current = next;
-    setEngine(next);
-  }, []);
+  const pushBackspace = useCallback(
+    (wholeWord: boolean) => {
+      if (phaseRef.current !== "running") return;
+      const next = applyBackspace(engineRef.current, wholeWord);
+      if (next === engineRef.current) return;
+      engineRef.current = next;
+      performanceRef.current.push(createPerformanceSnapshot(next, elapsedNow()));
+      setEngine(next);
+    },
+    [elapsedNow],
+  );
 
   useEffect(() => {
     if (!inputEl) return;

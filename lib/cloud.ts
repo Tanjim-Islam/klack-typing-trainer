@@ -83,6 +83,7 @@ interface ResultRowWithKeys {
   correct_keystrokes: number;
   words: number;
   samples: number[] | null;
+  performance_samples?: unknown;
   result_key_stats: { char: string; hits: number; misses: number }[] | null;
 }
 
@@ -110,6 +111,7 @@ function resultFromRow(row: ResultRowWithKeys): TestResult | null {
     words: row.words,
     keyStats,
     samples: (row.samples ?? []).map(Number),
+    performance: row.performance_samples ?? {},
   });
 
   // A single unreadable row is dropped, not fatal: losing one test from a
@@ -136,6 +138,9 @@ function resultToPayload(result: TestResult) {
     words: result.words,
     keyStats: result.keyStats,
     samples: result.samples,
+    ...(result.performance.wpm.length > 0
+      ? { performance: result.performance }
+      : {}),
   };
 }
 
@@ -188,7 +193,7 @@ export interface AccountData {
  * silently, and silently wrong history is worse than slow history.
  */
 export async function fetchAccountData(supabase: SupabaseClient): Promise<AccountData> {
-  const [profile, settings, results, drills] = await Promise.all([
+  const [profile, settings, initialResults, drills] = await Promise.all([
     supabase.from("profiles").select("display_name, avatar_url, onboarded").maybeSingle(),
     supabase.from("user_settings").select("*").maybeSingle(),
     supabase
@@ -196,7 +201,8 @@ export async function fetchAccountData(supabase: SupabaseClient): Promise<Accoun
       .select(
         "client_id, taken_at, mode, label, elapsed_ms, wpm, raw_wpm, accuracy, " +
           "consistency, correct_chars, incorrect_chars, keystrokes, " +
-          "correct_keystrokes, words, samples, result_key_stats(char, hits, misses)",
+          "correct_keystrokes, words, samples, performance_samples, " +
+          "result_key_stats(char, hits, misses)",
       )
       .order("taken_at", { ascending: false })
       .limit(MAX_RESULTS),
@@ -205,6 +211,23 @@ export async function fetchAccountData(supabase: SupabaseClient): Promise<Accoun
       .select("client_id, name, description, text, created_at, updated_at")
       .order("created_at", { ascending: true }),
   ]);
+
+  // Keep account sync usable while an app deployment and its additive migration
+  // roll out. The legacy RPC ignores the extra JSON key too, so old schemas lose
+  // only the new detail rather than blocking the whole account document.
+  const results =
+    initialResults.error && /performance_samples/i.test(initialResults.error.message)
+      ? await supabase
+          .from("test_results")
+          .select(
+            "client_id, taken_at, mode, label, elapsed_ms, wpm, raw_wpm, accuracy, " +
+              "consistency, correct_chars, incorrect_chars, keystrokes, " +
+              "correct_keystrokes, words, samples, " +
+              "result_key_stats(char, hits, misses)",
+          )
+          .order("taken_at", { ascending: false })
+          .limit(MAX_RESULTS)
+      : initialResults;
 
   const firstError = profile.error ?? settings.error ?? results.error ?? drills.error;
   if (firstError) throw new Error(firstError.message);

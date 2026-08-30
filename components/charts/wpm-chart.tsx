@@ -2,11 +2,15 @@
 
 import { useId, useRef, useState } from "react";
 import { formatDateTime, formatDecimal } from "@/lib/format";
-import type { TestResult } from "@/lib/types";
+import { MODE_LABELS, type TestResult } from "@/lib/types";
 
 const W = 720;
 const H = 260;
 const PAD = { top: 18, right: 14, bottom: 30, left: 42 };
+
+function errorsIn(result: TestResult): number {
+  return Math.max(0, result.keystrokes - result.correctKeystrokes);
+}
 
 /**
  * Speed over time, oldest test on the left. Hand-drawn SVG rather than a chart
@@ -42,6 +46,12 @@ export function WpmChart({ results }: { results: TestResult[] }) {
 
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((t) => Math.round(yMax * t));
   const active = hover !== null ? series[hover] : null;
+  const previous = hover !== null && hover > 0 ? series[hover - 1] : null;
+  const change = active && previous ? active.wpm - previous.wpm : null;
+  const peakBurst =
+    active && active.performance.burst.length > 0
+      ? Math.max(...active.performance.burst)
+      : null;
 
   const onMove = (event: React.PointerEvent<SVGSVGElement>) => {
     const svg = svgRef.current;
@@ -53,20 +63,40 @@ export function WpmChart({ results }: { results: TestResult[] }) {
     setHover(Math.max(0, Math.min(series.length - 1, index)));
   };
 
+  const onKeyDown = (event: React.KeyboardEvent<SVGSVGElement>) => {
+    let next = hover ?? series.length - 1;
+    if (event.key === "ArrowLeft") next--;
+    else if (event.key === "ArrowRight") next++;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = series.length - 1;
+    else return;
+    event.preventDefault();
+    setHover(Math.max(0, Math.min(series.length - 1, next)));
+  };
+
+  const activeX = hover === null ? 0 : xFor(hover);
+  const activeY = active ? yFor(active.wpm) : 0;
+
   return (
     <figure className="m-0">
-      <svg
-        ref={svgRef}
-        viewBox={`0 0 ${W} ${H}`}
-        className="w-full touch-pan-y"
-        role="img"
-        aria-label={`Words per minute across your last ${series.length} tests, from ${formatDecimal(
-          Math.min(...wpms),
-          0,
-        )} to ${formatDecimal(max, 0)}`}
-        onPointerMove={onMove}
-        onPointerLeave={() => setHover(null)}
-      >
+      <div className="relative">
+        <svg
+          ref={svgRef}
+          viewBox={`0 0 ${W} ${H}`}
+          className="w-full touch-pan-y rounded-md outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          role="img"
+          tabIndex={0}
+          aria-label={`Words per minute across your last ${series.length} tests. Use the pointer or arrow keys for point details. Speeds range from ${formatDecimal(
+            Math.min(...wpms),
+            0,
+          )} to ${formatDecimal(max, 0)}`}
+          onFocus={() => setHover((current) => current ?? series.length - 1)}
+          onBlur={() => setHover(null)}
+          onKeyDown={onKeyDown}
+          onPointerDown={onMove}
+          onPointerMove={onMove}
+          onPointerLeave={() => setHover(null)}
+        >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="var(--chart-1)" stopOpacity="0.22" />
@@ -129,26 +159,77 @@ export function WpmChart({ results }: { results: TestResult[] }) {
           : null}
 
         {active && hover !== null ? (
-          <g>
+          <g className="pointer-events-none">
             <line
-              x1={xFor(hover)}
-              x2={xFor(hover)}
+              x1={activeX}
+              x2={activeX}
               y1={PAD.top}
               y2={PAD.top + plotH}
               stroke="var(--ink-faint)"
               strokeWidth="1"
+              strokeDasharray="2 3"
             />
             <circle
-              cx={xFor(hover)}
-              cy={yFor(active.wpm)}
+              cx={activeX}
+              cy={activeY}
               r="5"
               fill="var(--chart-1)"
               stroke="var(--surface)"
               strokeWidth="2"
             />
+            <circle
+              cx={activeX}
+              cy={yFor((active.accuracy / 100) * yMax)}
+              r="3.5"
+              fill="var(--chart-2)"
+              stroke="var(--surface)"
+              strokeWidth="1.5"
+            />
           </g>
         ) : null}
-      </svg>
+        </svg>
+
+        {active ? (
+          <div
+            aria-hidden
+            className={`pointer-events-none absolute top-1/2 z-10 w-48 -translate-y-1/2 rounded-md border border-line bg-raised/98 p-2.5 font-mono shadow-lg ${
+              activeX > W / 2 ? "-ml-2 -translate-x-full" : "ml-2"
+            }`}
+            style={{ left: `${(activeX / W) * 100}%` }}
+          >
+            <p className="truncate text-[0.6875rem] font-semibold text-ink">
+              {MODE_LABELS[active.mode]} / {active.label}
+            </p>
+            <p className="mb-2 mt-0.5 text-[0.625rem] text-ink-faint">
+              {formatDateTime(active.at)}
+            </p>
+            <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-[0.625rem] leading-tight">
+              {[
+                ["WPM", formatDecimal(active.wpm), "bg-chart-1"],
+                ["Raw", formatDecimal(active.rawWpm), "bg-chart-2"],
+                ["Accuracy", `${formatDecimal(active.accuracy)}%`, "bg-ink-soft"],
+                ["Peak burst", peakBurst === null ? "-" : formatDecimal(peakBurst), "bg-ink-faint"],
+                ["Errors", String(errorsIn(active)), "bg-danger"],
+                [
+                  "Change",
+                  change === null
+                    ? "First test"
+                    : `${change >= 0 ? "+" : ""}${formatDecimal(change)} wpm`,
+                  change !== null && change < 0 ? "bg-danger" : "bg-success",
+                ],
+              ].map(([label, value, color]) => (
+                <div key={label} className="contents">
+                  <span className="flex items-center gap-1.5 text-ink-soft">
+                    <span className={`size-1.5 rounded-sm ${color}`} />
+                    {label}
+                  </span>
+                  <span className="text-right font-semibold text-ink tnum">{value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </div>
 
       <figcaption className="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-2">
         <div className="flex flex-wrap items-center gap-4">
@@ -169,15 +250,13 @@ export function WpmChart({ results }: { results: TestResult[] }) {
           </span>
         </div>
 
-        <span
-          aria-live="polite"
-          className="min-h-5 font-mono text-xs text-ink-soft tnum"
-        >
+        <span className="min-h-5 font-mono text-xs text-ink-faint tnum">
+          Hover or use arrow keys for test details
+        </span>
+        <span aria-live="polite" className="sr-only">
           {active
-            ? `${formatDecimal(active.wpm)} wpm - ${formatDecimal(
-                active.accuracy,
-              )}% - ${active.label} - ${formatDateTime(active.at)}`
-            : "Hover the line for test details"}
+            ? `${formatDecimal(active.wpm)} words per minute, ${formatDecimal(active.rawWpm)} raw, ${formatDecimal(active.accuracy)}% accuracy, ${errorsIn(active)} ${errorsIn(active) === 1 ? "error" : "errors"}, ${active.label}, ${formatDateTime(active.at)}`
+            : "No test selected"}
         </span>
       </figcaption>
     </figure>

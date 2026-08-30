@@ -117,14 +117,64 @@ create table if not exists public.test_results (
   keystrokes         integer     not null check (keystrokes >= 0),
   correct_keystrokes integer     not null check (correct_keystrokes >= 0),
   words              integer     not null check (words >= 0),
-  -- Net wpm sampled once per second, for the results sparkline.
+  -- Interval net pace retained for consistency and compact legacy sparklines.
   samples            real[]      not null default '{}' check (array_length(samples, 1) is null or array_length(samples, 1) <= 600),
+  -- Aligned elapsed, cumulative net/raw, interval burst, and error arrays.
+  performance_samples jsonb      not null default '{}'::jsonb,
   created_at         timestamptz not null default now(),
-  constraint test_results_user_client_key unique (user_id, client_id)
+  constraint test_results_user_client_key unique (user_id, client_id),
+  constraint test_results_performance_samples_shape check (
+    performance_samples = '{}'::jsonb
+    or (
+      jsonb_typeof(performance_samples) = 'object'
+      and jsonb_typeof(performance_samples -> 'elapsedMs') = 'array'
+      and jsonb_typeof(performance_samples -> 'wpm') = 'array'
+      and jsonb_typeof(performance_samples -> 'rawWpm') = 'array'
+      and jsonb_typeof(performance_samples -> 'burst') = 'array'
+      and jsonb_typeof(performance_samples -> 'errors') = 'array'
+      and jsonb_array_length(performance_samples -> 'elapsedMs') <= 600
+      and jsonb_array_length(performance_samples -> 'elapsedMs')
+        = jsonb_array_length(performance_samples -> 'wpm')
+      and jsonb_array_length(performance_samples -> 'elapsedMs')
+        = jsonb_array_length(performance_samples -> 'rawWpm')
+      and jsonb_array_length(performance_samples -> 'elapsedMs')
+        = jsonb_array_length(performance_samples -> 'burst')
+      and jsonb_array_length(performance_samples -> 'elapsedMs')
+        = jsonb_array_length(performance_samples -> 'errors')
+    )
+  )
 );
 
+-- `create table if not exists` does not add columns to an already-applied
+-- schema. Keep the full migration repeatable for existing projects too.
+alter table public.test_results
+  add column if not exists performance_samples jsonb not null default '{}'::jsonb
+  constraint test_results_performance_samples_shape check (
+    performance_samples = '{}'::jsonb
+    or (
+      jsonb_typeof(performance_samples) = 'object'
+      and jsonb_typeof(performance_samples -> 'elapsedMs') = 'array'
+      and jsonb_typeof(performance_samples -> 'wpm') = 'array'
+      and jsonb_typeof(performance_samples -> 'rawWpm') = 'array'
+      and jsonb_typeof(performance_samples -> 'burst') = 'array'
+      and jsonb_typeof(performance_samples -> 'errors') = 'array'
+      and jsonb_array_length(performance_samples -> 'elapsedMs') <= 600
+      and jsonb_array_length(performance_samples -> 'elapsedMs')
+        = jsonb_array_length(performance_samples -> 'wpm')
+      and jsonb_array_length(performance_samples -> 'elapsedMs')
+        = jsonb_array_length(performance_samples -> 'rawWpm')
+      and jsonb_array_length(performance_samples -> 'elapsedMs')
+        = jsonb_array_length(performance_samples -> 'burst')
+      and jsonb_array_length(performance_samples -> 'elapsedMs')
+        = jsonb_array_length(performance_samples -> 'errors')
+    )
+  );
+
+comment on column public.test_results.performance_samples is
+  'Compact aligned series for elapsed time, cumulative net/raw WPM, interval burst, and errors.';
+
 comment on table public.test_results is
-  'One row per completed test. Scores only; per-key detail lives in result_key_stats.';
+  'One row per completed test with summary scores and compact chart history; per-key detail lives in result_key_stats.';
 
 create index if not exists test_results_user_taken_at_idx
   on public.test_results (user_id, taken_at desc);
@@ -337,7 +387,8 @@ begin
     insert into public.test_results (
       user_id, client_id, taken_at, mode, label, elapsed_ms,
       wpm, raw_wpm, accuracy, consistency,
-      correct_chars, incorrect_chars, keystrokes, correct_keystrokes, words, samples
+      correct_chars, incorrect_chars, keystrokes, correct_keystrokes, words, samples,
+      performance_samples
     )
     values (
       v_user,
@@ -362,7 +413,8 @@ begin
                with ordinality as s(value, ord)
         ),
         '{}'::real[]
-      )
+      ),
+      coalesce(v_item -> 'performance', '{}'::jsonb)
     )
     on conflict (user_id, client_id) do update set
       taken_at           = excluded.taken_at,
@@ -378,7 +430,11 @@ begin
       keystrokes         = excluded.keystrokes,
       correct_keystrokes = excluded.correct_keystrokes,
       words              = excluded.words,
-      samples            = excluded.samples
+      samples            = excluded.samples,
+      performance_samples = case
+        when v_item ? 'performance' then excluded.performance_samples
+        else test_results.performance_samples
+      end
     returning id into v_id;
 
     -- Replace rather than merge: the incoming tally is the whole truth for

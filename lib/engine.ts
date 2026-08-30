@@ -1,4 +1,4 @@
-import type { TestResult } from "./types";
+import type { PerformanceSeries, TestResult } from "./types";
 
 /**
  * The typing engine. Pure functions over an immutable-ish state object so the
@@ -223,6 +223,10 @@ export function countChars(state: EngineState) {
   return { correct, incorrect };
 }
 
+function countErrors(state: EngineState): number {
+  return Math.max(0, state.keystrokes - state.correctKeystrokes);
+}
+
 export function grossWpm(correctChars: number, elapsedMs: number): number {
   if (elapsedMs <= 0) return 0;
   return (correctChars / CHARS_PER_WORD) / (elapsedMs / 60000);
@@ -250,7 +254,7 @@ export function score(
   const { correct, incorrect } = countChars(state);
   const minutes = elapsedMs / 60000;
   const wpm = minutes > 0 ? correct / CHARS_PER_WORD / minutes : 0;
-  const rawWpm = minutes > 0 ? (correct + incorrect) / CHARS_PER_WORD / minutes : 0;
+  const rawWpm = minutes > 0 ? state.keystrokes / CHARS_PER_WORD / minutes : 0;
   const accuracy =
     state.keystrokes > 0 ? (state.correctKeystrokes / state.keystrokes) * 100 : 0;
 
@@ -269,6 +273,113 @@ function round1(n: number) {
   return Math.round(n * 10) / 10;
 }
 
+/** A lightweight transient snapshot. Only the compact sampled series is persisted. */
+export interface PerformanceSnapshot {
+  elapsedMs: number;
+  correctChars: number;
+  incorrectChars: number;
+  keystrokes: number;
+  errors: number;
+}
+
+export function createPerformanceSnapshot(
+  state: EngineState,
+  elapsedMs: number,
+): PerformanceSnapshot {
+  const chars = countChars(state);
+  return {
+    elapsedMs: Math.max(0, elapsedMs),
+    correctChars: chars.correct,
+    incorrectChars: chars.incorrect,
+    keystrokes: state.keystrokes,
+    errors: countErrors(state),
+  };
+}
+
+export interface PerformanceHistory {
+  /** Interval net pace retained for the existing consistency calculation. */
+  samples: number[];
+  /** Cumulative net/raw plus interval burst/errors, matching Monkeytype's chart. */
+  performance: PerformanceSeries;
+}
+
+const EMPTY_SNAPSHOT: PerformanceSnapshot = {
+  elapsedMs: 0,
+  correctChars: 0,
+  incorrectChars: 0,
+  keystrokes: 0,
+  errors: 0,
+};
+
+/**
+ * Builds an ideal one-second grid from input snapshots. Cumulative WPM and raw
+ * WPM describe progress up to each boundary; burst and errors describe only
+ * the interval ending at that boundary. Like Monkeytype, a final partial bucket
+ * is kept once it reaches half a second.
+ */
+export function buildPerformanceHistory(
+  snapshots: PerformanceSnapshot[],
+  elapsedMs: number,
+): PerformanceHistory {
+  const elapsed = Math.max(0, elapsedMs);
+  const fullSeconds = Math.floor(elapsed / 1000);
+  const boundaries = Array.from({ length: fullSeconds }, (_, index) => (index + 1) * 1000);
+  const remainder = elapsed - fullSeconds * 1000;
+  if (remainder >= 500) boundaries.push(elapsed);
+
+  const performance: PerformanceSeries = {
+    elapsedMs: [],
+    wpm: [],
+    rawWpm: [],
+    burst: [],
+    errors: [],
+  };
+  const samples: number[] = [];
+
+  let snapshotIndex = 0;
+  let current = EMPTY_SNAPSHOT;
+  let previous = EMPTY_SNAPSHOT;
+  let previousBoundary = 0;
+
+  for (const boundary of boundaries.slice(0, 600)) {
+    while (
+      snapshotIndex < snapshots.length &&
+      snapshots[snapshotIndex]!.elapsedMs <= boundary
+    ) {
+      current = snapshots[snapshotIndex]!;
+      snapshotIndex++;
+    }
+
+    const intervalMs = boundary - previousBoundary;
+    const intervalCorrect = Math.max(0, current.correctChars - previous.correctChars);
+    const intervalKeystrokes = Math.max(0, current.keystrokes - previous.keystrokes);
+    const intervalErrors = Math.max(0, current.errors - previous.errors);
+
+    samples.push(round1(Math.min(MAX_WPM, grossWpm(intervalCorrect, intervalMs))));
+    performance.elapsedMs.push(Math.round(boundary));
+    performance.wpm.push(
+      round1(Math.min(MAX_WPM, grossWpm(current.correctChars, boundary))),
+    );
+    performance.rawWpm.push(
+      round1(
+        Math.min(
+          MAX_WPM,
+          grossWpm(current.keystrokes, boundary),
+        ),
+      ),
+    );
+    performance.burst.push(
+      round1(Math.min(MAX_WPM, grossWpm(intervalKeystrokes, intervalMs))),
+    );
+    performance.errors.push(intervalErrors);
+
+    previous = current;
+    previousBoundary = boundary;
+  }
+
+  return { samples, performance };
+}
+
 /** Tests below this bar are practice keystrokes, not results worth keeping. */
 export const MIN_RECORDED_MS = 3000;
 export const MIN_RECORDED_KEYSTROKES = 10;
@@ -284,6 +395,7 @@ export function buildResult(args: {
   state: EngineState;
   elapsedMs: number;
   samples: number[];
+  performance?: PerformanceSeries;
   at: number;
 }): TestResult {
   const s = score(args.state, args.elapsedMs, args.samples);
@@ -304,5 +416,12 @@ export function buildResult(args: {
     words: s.words,
     keyStats: args.state.keyStats,
     samples: args.samples.map(round1).slice(0, 600),
+    performance: args.performance ?? {
+      elapsedMs: [],
+      wpm: [],
+      rawWpm: [],
+      burst: [],
+      errors: [],
+    },
   };
 }

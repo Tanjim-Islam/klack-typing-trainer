@@ -10,12 +10,15 @@ import {
 import {
   applyBackspace,
   applyChar,
+  buildPerformanceHistory,
   buildResult,
   countChars,
+  createPerformanceSnapshot,
   createEngine,
   isRecordable,
   MAX_WPM,
   type EngineState,
+  type PerformanceSnapshot,
 } from "@/lib/engine";
 import { createId } from "@/lib/format";
 import { playClick } from "@/lib/sound";
@@ -141,8 +144,7 @@ export function useTypingTest(
 
   const engineRef = useRef(session.engine);
   const phaseRef = useRef<Phase>("idle");
-  const samplesRef = useRef<number[]>([]);
-  const lastSampleCharsRef = useRef(0);
+  const performanceRef = useRef<PerformanceSnapshot[]>([]);
   const clockRef = useRef({ accumulated: 0, since: null as number | null });
 
   const attachInput = useCallback((element: HTMLTextAreaElement | null) => {
@@ -180,8 +182,7 @@ export function useTypingTest(
       const fresh = startSession(next, reuse);
       engineRef.current = fresh.engine;
       setSession(fresh);
-      samplesRef.current = [];
-      lastSampleCharsRef.current = 0;
+      performanceRef.current = [];
       clockRef.current = { accumulated: 0, since: null };
       setElapsedMs(0);
       setResult(null);
@@ -224,14 +225,7 @@ export function useTypingTest(
       const raw = clockRef.current.accumulated;
       const elapsed = cap !== undefined ? Math.min(raw, cap) : raw;
 
-      // Close out the partial final second so consistency covers the whole run.
-      const wholeSeconds = Math.floor(elapsed / 1000);
-      const remainder = elapsed - wholeSeconds * 1000;
-      if (remainder > 400) {
-        const correct = countChars(state).correct;
-        const delta = correct - lastSampleCharsRef.current;
-        samplesRef.current.push(Math.max(0, (delta / 5) * (60000 / remainder)));
-      }
+      const history = buildPerformanceHistory(performanceRef.current, elapsed);
 
       setElapsedMs(elapsed);
       setPhaseBoth("finished");
@@ -242,7 +236,8 @@ export function useTypingTest(
         label: session.test.label,
         state,
         elapsedMs: elapsed,
-        samples: samplesRef.current,
+        samples: history.samples,
+        performance: history.performance,
         at: Date.now(),
       });
 
@@ -276,14 +271,6 @@ export function useTypingTest(
       const ms = elapsedNow();
       setElapsedMs(ms);
 
-      const seconds = Math.floor(ms / 1000);
-      while (samplesRef.current.length < seconds) {
-        const correct = countChars(engineRef.current).correct;
-        const delta = correct - lastSampleCharsRef.current;
-        lastSampleCharsRef.current = correct;
-        samplesRef.current.push(Math.max(0, (delta / 5) * 60));
-      }
-
       if (limit !== null && ms >= limit) finish(engineRef.current, limit);
     };
 
@@ -316,22 +303,30 @@ export function useTypingTest(
         setPhaseBoth("running");
       }
 
+      performanceRef.current.push(
+        createPerformanceSnapshot(next, !prev.started ? 0 : elapsedNow()),
+      );
+
       if (settings.sound) {
         playClick(next.rejections > prev.rejections ? "error" : "key");
       }
 
       if (next.complete) finish(next);
     },
-    [finish, settings.sound, settings.stopOnError, setPhaseBoth],
+    [elapsedNow, finish, settings.sound, settings.stopOnError, setPhaseBoth],
   );
 
-  const pushBackspace = useCallback((wholeWord: boolean) => {
-    if (phaseRef.current === "finished") return;
-    const next = applyBackspace(engineRef.current, wholeWord);
-    if (next === engineRef.current) return;
-    engineRef.current = next;
-    setSession((current) => ({ ...current, engine: next }));
-  }, []);
+  const pushBackspace = useCallback(
+    (wholeWord: boolean) => {
+      if (phaseRef.current === "finished") return;
+      const next = applyBackspace(engineRef.current, wholeWord);
+      if (next === engineRef.current) return;
+      engineRef.current = next;
+      performanceRef.current.push(createPerformanceSnapshot(next, elapsedNow()));
+      setSession((current) => ({ ...current, engine: next }));
+    },
+    [elapsedNow],
+  );
 
   const resume = useCallback(() => {
     if (phaseRef.current === "paused") {

@@ -13,7 +13,7 @@ import { formatDecimal, formatDuration, formatInt } from "@/lib/format";
 import { charName } from "@/lib/keyboard";
 import type { TestResult } from "@/lib/types";
 import { MODE_LABELS } from "@/lib/types";
-import { Sparkline } from "@/components/charts/sparkline";
+import { PaceChart } from "@/components/charts/pace-chart";
 import { Badge, Kbd, Stat } from "@/components/ui/bits";
 import { Button } from "@/components/ui/button";
 import { Panel } from "@/components/ui/panel";
@@ -106,11 +106,7 @@ export function ResultsPanel({
         <div className="flex flex-col gap-6">
           <div>
             <h3 className="legend mb-2.5">Pace, second by second</h3>
-            <Sparkline
-              values={result.samples}
-              label="Words per minute during this test"
-              className="w-full rounded-md"
-            />
+            <PaceChart result={result} />
           </div>
 
           <div>

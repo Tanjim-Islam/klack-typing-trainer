@@ -3,8 +3,8 @@
 import { useId } from "react";
 
 /**
- * Per-second WPM for a single test. Deliberately axis-free: the shape of the
- * run is the point, and the exact numbers live in the stat tiles beside it.
+ * Compact per-second WPM summary for history rows. The full post-test result
+ * uses PaceChart, where all recorded series and point details have room.
  */
 export function Sparkline({
   values,

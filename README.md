@@ -54,15 +54,17 @@ Generated text can optionally include punctuation and numbers.
 **Scoring**
 
 - Net words per minute, based on correctly typed characters (5 characters = 1 word)
-- Raw words per minute, before mistakes
+- Raw words per minute from every printable keypress, including corrected errors
 - Accuracy, measured per keystroke including corrections
 - Consistency, the inverse coefficient of variation of per-second speed
 - Per-character hit and miss tallies, stored with every test
+- A post-test pace chart with per-second WPM, raw speed, burst and errors on hover
 
 **Progress**
 
 - Six summary tiles including a 10-test trend and a daily streak
-- Speed-over-time chart with accuracy overlaid and a hover crosshair
+- Speed-over-time chart with an in-chart hover card for WPM, raw speed, accuracy,
+  peak burst, errors and change from the previous test
 - Keyboard accuracy heat map with the weakest keys outlined and listed
 - 28-day practice activity strip
 - Searchable, filterable, sortable test history with per-row and bulk delete
@@ -115,9 +117,9 @@ Generated text can optionally include punctuation and numbers.
 
 **Deliberately not used:**
 
-- *A chart library.* The two charts here are a line chart and a sparkline. Hand-written
-  SVG is smaller, reads from the same design tokens as everything else, and gave
-  exact control over the crosshair and the accuracy overlay.
+- *A chart library.* These charts are small hand-written SVGs. That keeps them on the
+  same design tokens as everything else and gives exact control over crosshairs,
+  overlays and responsive point details.
 - *An animation library.* All motion is CSS keyframes and transitions. A JavaScript
   animation library added a real failure mode: animation frames stop in a hidden
   tab, so anything whose removal was gated on an exit animation could stay in the

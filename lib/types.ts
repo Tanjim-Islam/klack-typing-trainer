@@ -76,6 +76,30 @@ export const keyTallySchema = z.object({
   m: z.number().int().min(0),
 });
 
+const performanceValuesSchema = z.array(z.number().min(0)).max(600).default([]);
+
+/**
+ * Monkeytype-style chart history for one completed test. Every array uses the
+ * same index, which keeps the persisted JSON compact enough for 500 local
+ * results while retaining the exact elapsed time of a fractional final bucket.
+ */
+export const performanceSeriesSchema = z
+  .object({
+    elapsedMs: z.array(z.number().int().positive()).max(600).default([]),
+    wpm: performanceValuesSchema,
+    rawWpm: performanceValuesSchema,
+    burst: performanceValuesSchema,
+    errors: z.array(z.number().int().min(0)).max(600).default([]),
+  })
+  .refine(
+    ({ elapsedMs, wpm, rawWpm, burst, errors }) =>
+      new Set([elapsedMs.length, wpm.length, rawWpm.length, burst.length, errors.length])
+        .size === 1,
+    { message: "Performance series must have matching lengths." },
+  );
+
+export type PerformanceSeries = z.infer<typeof performanceSeriesSchema>;
+
 export const resultSchema = z.object({
   id: z.string().min(1),
   at: z.number().int().positive(),
@@ -93,8 +117,16 @@ export const resultSchema = z.object({
   correctKeystrokes: z.number().int().min(0),
   words: z.number().int().min(0),
   keyStats: z.record(z.string(), keyTallySchema),
-  /** WPM sampled once per second, for the results sparkline. */
+  /** Interval net pace retained for consistency and compact history sparklines. */
   samples: z.array(z.number().min(0)).max(600),
+  /** Point-level net, raw, burst and error history for the detailed result chart. */
+  performance: performanceSeriesSchema.default({
+    elapsedMs: [],
+    wpm: [],
+    rawWpm: [],
+    burst: [],
+    errors: [],
+  }),
 });
 
 export type TestResult = z.infer<typeof resultSchema>;

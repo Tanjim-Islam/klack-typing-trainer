@@ -80,6 +80,7 @@ export interface Database {
           correct_keystrokes: number;
           words: number;
           samples: number[];
+          performance_samples: Json;
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["test_results"]["Row"], "id" | "created_at"> & {
