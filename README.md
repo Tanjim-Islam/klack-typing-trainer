@@ -1,226 +1,458 @@
-# Klack
+<div align="center">
 
-**Typing practice that finds your weak keys and drills them.**
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/banner-dark.png">
+  <img src="docs/screenshots/banner-light.png" alt="Klack: typing practice that finds your weak keys and drills them" width="100%">
+</picture>
 
-Klack measures your typing speed and accuracy key by key. After a few tests it
-shows an accuracy heat map of the whole keyboard, tells you which keys are
-costing you the most mistakes, and generates a practice drill aimed at exactly
-those keys.
+<br>
+<br>
 
-Everything runs in the browser. There is no account, no server and no network
-request: your history is stored in this browser's local storage.
+[![Live demo](https://img.shields.io/badge/Live_demo-klack--typing--trainer.vercel.app-0e6e68?style=flat-square&logo=vercel&logoColor=white)](https://klack-typing-trainer.vercel.app)
+&nbsp;
+![Next.js 16](https://img.shields.io/badge/Next.js-16-1a1814?style=flat-square&logo=nextdotjs&logoColor=white)
+![React 19](https://img.shields.io/badge/React-19-1a1814?style=flat-square&logo=react&logoColor=61DAFB)
+![TypeScript](https://img.shields.io/badge/TypeScript-strict-1a1814?style=flat-square&logo=typescript&logoColor=3178C6)
+![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-1a1814?style=flat-square&logo=tailwindcss&logoColor=38BDF8)
+![Supabase](https://img.shields.io/badge/Supabase-optional-1a1814?style=flat-square&logo=supabase&logoColor=3ECF8E)
+
+**[Try it live](https://klack-typing-trainer.vercel.app)** &nbsp;·&nbsp;
+[Features](#features) &nbsp;·&nbsp;
+[Quick start](#quick-start) &nbsp;·&nbsp;
+[How it works](#how-it-works) &nbsp;·&nbsp;
+[Design](#design-system)
+
+</div>
+
+<br>
+
+Most typing tests hand you a number. **62 wpm** does not tell you what to do next.
+
+Klack records every keystroke against the character you were aiming for, ranks your keys by
+how many mistakes they actually cost you, and turns the worst ones into a drill. One click
+and you are practising the exact keys that slow you down.
+
+<p align="center">
+  <img src="docs/screenshots/demo.gif" alt="Typing a 15 second test in Klack and getting a detailed result" width="100%">
+</p>
+
+<p align="center"><sub>A 15 second timed test: distraction-free typing, then a second-by-second breakdown.</sub></p>
+
+## The loop
+
+```mermaid
+flowchart LR
+    A["⌨️ Take a test"] --> B["🔥 See your weak keys"]
+    B --> C["🎯 Drill those keys"]
+    C --> D["📈 Test again"]
+    D --> A
+```
+
+1. **Start typing.** The clock starts on your first keystroke, not before.
+2. **Read the result.** Speed, accuracy, consistency, a pace chart and the keys you fumbled.
+3. **Open Progress.** Speed over time and an accuracy heat map of the whole keyboard.
+4. **Press _Drill these keys_.** Klack builds a drill from your five weakest keys and loads it.
+5. **Repeat.** The streak counter and trend arrow tell you whether it is working.
+
+No account is needed. Sign in only if you want your history in the cloud and on every device.
 
 ---
 
-## Who it is for
-
-People who type for a living and want to get measurably faster: developers,
-writers, support agents, students. It assumes a physical keyboard and a few
-spare minutes, not a training course.
-
-## Why this concept
-
-Most typing testers tell you a number. A 62 wpm score does not tell you what to
-do next. Klack's one differentiating idea is that the measurement feeds
-directly back into the practice: because every keystroke is recorded against the
-character it was aiming for, the app can rank keys by how many mistakes they
-actually caused and then build text that hammers those keys. The loop is
-**test, see your weak keys, drill them, test again**.
-
-## The main flow
-
-1. Open the app and start typing. The clock starts on your first keystroke.
-2. Finish the test and read the result: speed, accuracy, consistency, and the
-   keys you fumbled in that run.
-3. Go to **Progress** for speed over time and a keyboard accuracy heat map.
-4. Press **Drill these keys**. Klack generates a drill from your five weakest
-   keys and drops you back on the test screen with it loaded.
-5. Repeat. The streak counter and the trend arrow tell you whether it is working.
-
 ## Features
 
-**Five test modes**
+### ⌨️ A typing surface that gets out of the way
 
-| Mode | What it is |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/type-dark.png">
+  <img src="docs/screenshots/type-light.png" alt="The Klack type page with mode bar, stats and a four-line typing surface">
+</picture>
+
+Five test modes, all a click or a <kbd>Tab</kbd> away:
+
+| Mode | What you type |
 | --- | --- |
-| Timed | 15, 30, 60 or 120 seconds of generated words |
-| Words | A fixed count: 10, 25, 50 or 100 words |
-| Prose | Full sentences with capitals and punctuation |
-| Code | Brackets, operators and symbols from real code snippets |
-| Drill | A saved drill, or one generated from your weak keys |
+| **Timed** | 15, 30, 60 or 120 seconds of generated words |
+| **Words** | A fixed count: 10, 25, 50 or 100 words |
+| **Prose** | Full sentences with capitals and punctuation |
+| **Code** | Brackets, operators and symbols from real code snippets |
+| **Drill** | A saved drill, or one generated from your weak keys |
 
-Generated text can optionally include punctuation and numbers.
+Generated text can include punctuation and numbers. Punctuation mode does not sprinkle commas
+over random words: it uses complete, attributed sentences from public-domain classics.
 
-**Scoring**
+The moment you start, the page clears. Setup controls, helper copy and the mobile tab bar
+disappear, leaving the clock, live speed and four large lines of text. The caret glides between
+characters on a single frame-synchronized animation loop.
 
-- Net words per minute, based on correctly typed characters (5 characters = 1 word)
-- Raw words per minute from every printable keypress, including corrected errors
-- Accuracy, measured per keystroke including corrections
-- Consistency, the inverse coefficient of variation of per-second speed
-- Per-character hit and miss tallies, stored with every test
-- A post-test pace chart with per-second WPM, raw speed, burst and errors on hover
+<details>
+<summary><b>See focus mode</b></summary>
+<br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/focus-dark.png">
+  <img src="docs/screenshots/focus-light.png" alt="Distraction-free typing stage during an active test">
+</picture>
+</details>
 
-**Progress**
+### 📊 Results that explain the number
 
-- Six summary tiles including a 10-test trend and a daily streak
-- Speed-over-time chart with an in-chart hover card for WPM, raw speed, accuracy,
-  peak burst, errors and change from the previous test
-- Keyboard accuracy heat map with the weakest keys outlined and listed
-- 28-day practice activity strip
-- Searchable, filterable, sortable test history with per-row and bulk delete
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/result-card-dark.png">
+  <img src="docs/screenshots/result-card-light.png" alt="Result panel with WPM, accuracy, consistency, a pace chart tooltip and fumbled keys">
+</picture>
 
-**Drills**
+- **Net WPM** from correctly typed characters (5 characters = 1 word)
+- **Raw WPM** from every printable keypress, including the ones you corrected
+- **Accuracy** per keystroke, so a fixed mistake still counts
+- **Consistency**, the inverse coefficient of variation of your per-second speed
+- **Pace, second by second**: hover any point for WPM, raw speed, burst and errors
+- **Keys you fumbled here**, the per-test preview of what Progress will rank
 
-- Seven built-in drills (home row, top row, bottom row, numbers, symbols,
-  capitals, common letter pairs)
-- Create, edit, duplicate and delete your own drills with validation
+### 📈 Progress you can act on
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/speed-chart-dark.png">
+  <img src="docs/screenshots/speed-chart-light.png" alt="Speed over time chart with a detailed hover card">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/heatmap-dark.png">
+  <img src="docs/screenshots/heatmap-light.png" alt="Keyboard accuracy heat map with the five weakest keys ranked">
+</picture>
+
+- Six summary tiles: best speed, recent average, recent accuracy, streak, time and words typed
+- Speed over time with an in-chart card for WPM, raw, accuracy, peak burst, errors and change
+- **A keyboard heat map** where hotter keys are the ones you miss most, every key labelled with
+  its accuracy as a number
+- Weakest keys ranked by **total mistakes, not percentage**: a key you miss 30 times matters
+  more than one you missed once in twelve tries
+- A 28-day practice strip and a searchable, sortable, filterable test history
+
+### 🎯 Drills
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/drills-dark.png">
+  <img src="docs/screenshots/drills-light.png" alt="Drills page with custom and built-in drills">
+</picture>
+
+- **Generated drills** that cycle through your weakest keys so no single key dominates
+- Seven built-ins: home row, top row, bottom row, numbers, symbols, capitals, common pairs
+- Create, edit, duplicate and delete your own, with validation
 - Built-ins are read-only but can be duplicated into editable copies
 
-**Settings that actually change behaviour**
+### ⚔️ Live 1v1 races
 
-- Light, dark or system theme; three accent themes
-- Reduce motion, independent of the OS setting
+Share an eight-character room code, both press Start, and race through **the exact same
+passage** after **the same three-second countdown**. No account required. Your rival's progress
+streams in live above your text.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/race-live-dark.png">
+  <img src="docs/screenshots/race-live-light.png" alt="Racing with live opponent progress">
+</picture>
+
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/race-room-dark.png">
+        <img src="docs/screenshots/race-room-light.png" alt="Race room with two players and a room code">
+      </picture>
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/race-finish-dark.png">
+        <img src="docs/screenshots/race-finish-light.png" alt="Race result comparing both players">
+      </picture>
+    </td>
+  </tr>
+  <tr>
+    <td align="center"><sub><b>Lobby.</b> Two lanes, and each player readies themselves.</sub></td>
+    <td align="center"><sub><b>Result.</b> Ranked by correct characters, then accuracy.</sub></td>
+  </tr>
+</table>
+
+Rooms run on Supabase Realtime Presence and Broadcast. They are casual invite rooms, not ranked
+infrastructure: there is no anti-cheat or matchmaking, and a room disappears when both players
+leave. A finished race is saved to your history like any other timed test, so it still feeds
+your weak-key analysis.
+
+### 📱 Built for every screen
+
+<table>
+  <tr>
+    <td align="center" width="25%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-type-dark.png">
+        <img src="docs/screenshots/mobile-type-light.png" alt="Type page on a phone" width="240">
+      </picture>
+    </td>
+    <td align="center" width="25%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/mobile-progress-dark.png">
+        <img src="docs/screenshots/mobile-progress-light.png" alt="Progress page on a phone" width="240">
+      </picture>
+    </td>
+    <td width="50%">
+
+**Light, dark or system theme**, each designed separately rather than inverted.
+
+**Three accents**: workshop teal, signal amber and blueprint cobalt.
+
+**A bottom tab bar** on phones, and comfortable touch targets throughout.
+
+**Reduce motion** in the app, independent of your OS setting.
+
+<sub>Every screenshot in this README switches with your GitHub theme.</sub>
+
+</td>
+  </tr>
+</table>
+
+### ⚙️ Settings that actually change behaviour
+
+<details>
+<summary><b>See the settings page</b></summary>
+<br>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/settings-dark.png">
+  <img src="docs/screenshots/settings-light.png" alt="Settings page">
+</picture>
+</details>
+
 - Default mode, test length and word count
 - Punctuation and numbers in generated text
-- Stop on error (wrong keys are rejected until corrected)
+- **Stop on error**: wrong keys are rejected until corrected
 - Hide live speed during a test
-- Caret style: block, line or underline
-- Text size: regular or large
-- Synthesised keystroke click (generated with Web Audio, no audio files)
+- Caret style (block, line or underline) and text size (regular or large)
+- A synthesised keystroke click, generated with Web Audio, no audio files
 - Export a JSON backup, import one, or reset everything
 
-## Behaviour worth knowing
+---
 
-- **Tab** loads fresh text without leaving focus mode. **Escape** resets the test and
-  leaves focus mode. **Ctrl+Backspace** clears the current unfinished or incorrect word,
-  but never erases a fully correct word.
-  **Shift+Tab** moves focus out of the typing field.
-- Pressing **space** mid-word skips the rest of it. Skipped characters are struck
-  through and count as misses, so the shortcut is a trade-off rather than free.
-- The clock **pauses** when the test loses focus, the window blurs, or the tab is
-  hidden. Time away never counts against a score.
-- Tests shorter than **3 seconds** or under **10 keystrokes** are scored and shown
-  but not saved, so warm-ups do not skew your averages.
-- Reported speed is capped at 400 wpm. Anything beyond that comes from a clock
-  anomaly, not from typing.
+## Keyboard shortcuts
 
-## Technology
-
-| Choice | Why |
+| Keys | What happens |
 | --- | --- |
-| **Next.js 16** (App Router, Turbopack) | Already the project's framework. Pages are static shells; all state is client-side, so no server work is needed. |
-| **Tailwind CSS 4** | Already configured. Used with a semantic token layer in `app/globals.css` rather than raw utility colours. |
-| **Radix UI** (`radix-ui`) | Accessible unstyled primitives for dialog, alert dialog, dropdown, select, switch, toggle group and tooltip. Focus trapping, roving tabindex and ARIA wiring are solved; every pixel of styling is ours. |
-| **lucide-react** | One consistent stroke-based icon set. |
-| **zod** | Validates the drill form and, more importantly, the shape of data read back from local storage. |
-| **clsx** + **tailwind-merge** | The `cn()` helper for conditional classes. |
+| <kbd>Tab</kbd> | Fresh text and a reset timer, without leaving focus mode |
+| <kbd>Esc</kbd> | Reset the same text and leave focus mode |
+| <kbd>Shift</kbd> + <kbd>Tab</kbd> | Move focus out of the typing field |
+| <kbd>Backspace</kbd> | Step back one character |
+| <kbd>Ctrl</kbd> + <kbd>Backspace</kbd> | Clear the current unfinished or incorrect word. A fully correct word is never erased. |
+| <kbd>Space</kbd> mid-word | Skip the rest of the word. Skipped letters are struck through and count as misses. |
+| <kbd>Enter</kbd> while paused | Resume the clock |
 
-**Deliberately not used:**
+### Behaviour worth knowing
 
-- *A chart library.* These charts are small hand-written SVGs. That keeps them on the
-  same design tokens as everything else and gives exact control over crosshairs,
-  overlays and responsive point details.
-- *An animation library.* All motion is CSS keyframes and transitions. A JavaScript
-  animation library added a real failure mode: animation frames stop in a hidden
-  tab, so anything whose removal was gated on an exit animation could stay in the
-  DOM indefinitely. CSS also gets reduced-motion support for free.
-- *A state management library.* One module-level store read through
-  `useSyncExternalStore` was enough (see below).
-- *A second component library.* Radix plus the local design system is the only
-  design approach in the app.
+- ⏸️ The clock **pauses** when the test loses focus, the window blurs or the tab is hidden.
+  Time away never counts against you. (Races are the exception: the shared clock keeps going.)
+- 🧊 Tests under **3 seconds** or **10 keystrokes** are scored and shown, but never saved,
+  so warm-ups do not skew your averages.
+- 🚦 Reported speed is capped at 400 wpm. Anything beyond that is a clock anomaly, not typing.
 
+---
 
-### Architecture notes
+## Quick start
 
-**The engine is pure.** `lib/engine.ts` holds the typing rules as plain
-functions over an immutable state object: `applyChar`, `applyBackspace`, `score`.
-No React, no DOM. `components/type/use-typing-test.ts` wraps it with the clock,
-the input listeners and the result plumbing.
-
-**The store is a module, not a context.** Local storage cannot be read while
-rendering on the server, and reading it in an effect means a render pass with
-the wrong data. `lib/store.ts` keeps the document at module scope and exposes it
-through `useSyncExternalStore`: the server snapshot is the defaults, and the
-saved document swaps in the moment the first component subscribes. Actions are
-plain exported functions, so there is no provider to thread through the tree.
-
-**The typing surface writes to the DOM directly.** Caret position and line
-scrolling are measurements, not state. `paint()` in `typing-surface.tsx` reads
-the active character's offsets in a layout effect and sets the caret's transform
-and the track's scroll offset imperatively. Combined with a memoised `Word`
-component keyed on a compact per-character state string, a keystroke re-renders
-one word instead of a 1,200 character paragraph.
-
-## Setup
-
-Requires Node.js 20.9 or newer.
+Requires **Node.js 20.9** or newer.
 
 ```bash
-npm install
+git clone https://github.com/Tanjim-Islam/klack-typing-trainer.git
+```
+
+```bash
+cd klack-typing-trainer && npm install
 ```
 
 ```bash
 npm run dev
 ```
 
+Open [http://localhost:3000](http://localhost:3000) and start typing. That is the whole setup
+for guest mode: history lives in your browser's local storage and nothing else is required.
+
+### Optional: accounts, cloud sync and 1v1
+
+Sign-in, cloud history and live races need a [Supabase](https://supabase.com) project.
+
+1. Copy `.env.example` to `.env.local` and fill in your project's values:
+
+   ```bash
+   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_...
+   # NEXT_PUBLIC_SITE_URL=https://your-domain.example   (recommended in production)
+   ```
+
+2. Run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) against your
+   database. It is idempotent, so re-running it is safe.
+3. In the Supabase dashboard, add your app's URLs under **Authentication → URL Configuration**
+   (for example `http://localhost:3000/**`), and enable the **Google** provider if you want
+   "Continue with Google".
+
+Without these variables Klack still runs. The sign-in pages explain that accounts are not
+configured, and everything else keeps working locally.
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the dev server with Turbopack |
+| `npm run build` | Production build |
+| `npm run start` | Serve the production build |
+| `npm run lint` | ESLint |
+| `npx tsc --noEmit` | Strict type check |
+
+---
+
+## How it works
+
+### Accounts are optional, and local always comes first
+
+| | Guest | Signed in |
+| --- | --- | --- |
+| **Source of truth** | This browser | Postgres on Supabase |
+| **Local storage** | `klack.v1` | `klack.v1.u.<userId>`, as a cache |
+| **Sign-in methods** | None needed | Email and password, or Google |
+
+Every action updates the screen and local storage **immediately**, then syncs in the
+background. Nobody waits on the network to see their score. If a write fails you get a toast,
+and your local copy stays put.
+
+The first time you sign in, your guest history is **uploaded to your account**, matched on
+client-generated ids so syncing the same test twice can never create a duplicate. Nothing is
+deleted: sign out and your guest data is exactly where you left it.
+
+Every table is protected by **row level security**, so each account can only ever read and write
+its own rows. A finished test, together with its per-key tallies, is written in **one atomic
+database call**.
+
+<details>
+<summary><b>Architecture notes</b></summary>
+
+<br>
+
+```
+ keystroke ─▶ lib/engine.ts    pure typing rules, no React, no DOM
+                   │
+                   ▼
+              lib/analysis.ts  key scores, weak keys, generated drills
+                   │
+                   ▼
+              lib/store.ts     the document, local-first, one module-level store
+                   │
+                   ▼
+              lib/cloud.ts     translation to and from five Supabase tables
+                   │
+                   ▼
+              Postgres + RLS   the real account boundary
+```
+
+**The engine is pure.** `lib/engine.ts` holds the typing rules as plain functions over an
+immutable state object: `applyChar`, `applyBackspace`, `score`. No React, no DOM.
+`components/type/use-typing-test.ts` wraps it with the clock, input listeners and result
+plumbing.
+
+**The store is a module, not a context.** Local storage cannot be read while rendering on the
+server, and reading it in an effect means a render pass with the wrong data. `lib/store.ts`
+keeps the document at module scope and exposes it through `useSyncExternalStore`: the server
+snapshot is the defaults, and the saved document swaps in the moment the first component
+subscribes. Actions are plain exported functions, so there is no provider to thread through.
+
+**The typing surface writes to the DOM directly.** Caret position and line scrolling are
+measurements, not state. The surface keeps current and target coordinates in refs and moves
+the caret and text track together on one animation frame loop, so a new line scrolls in
+without a wobble. A memoised `Word` component keyed on a compact per-character state string
+means one keystroke re-renders one word, not a 1,200 character paragraph.
+
+**Everything from outside goes through zod.** Local storage, imported backups, form input and
+every row read back from Postgres. One unreadable result is dropped rather than failing the
+whole history.
+
+**Server-side identity is verified.** The session is read with `getUser()`, never trusted from
+a cookie, and every post-login redirect passes an open-redirect guard.
+
+</details>
+
+<details>
+<summary><b>Tech stack</b></summary>
+
+<br>
+
+| Choice | Why |
+| --- | --- |
+| **Next.js 16** (App Router, Turbopack) | Thin server-rendered shells, Server Actions for auth, and `proxy.ts` for session refresh. |
+| **React 19** | `useSyncExternalStore`, `useActionState` and `useFormStatus`. |
+| **Tailwind CSS 4** | Used through a semantic token layer in `app/globals.css`, never raw palette colours. |
+| **Radix UI** | Accessible unstyled primitives for dialogs, menus, selects, switches and tooltips. Every pixel of styling is local. |
+| **Supabase** | Postgres with row level security, email and Google auth, and Realtime channels for races. |
+| **zod** | Validates every boundary: forms, storage, imports and database rows. |
+| **lucide-react** | One consistent stroke-based icon set. |
+
+**Deliberately not used:**
+
+- **A chart library.** The charts are small hand-written SVGs on the same design tokens as
+  everything else, with exact control over crosshairs, tooltips and narrow screens.
+- **An animation library.** All motion is CSS, which also gets reduced-motion support for free.
+- **A state library.** One module-level store read through `useSyncExternalStore` is enough.
+- **An ORM.** Queries go through `supabase-js` against a hand-written schema and types.
+
+</details>
+
+<details>
+<summary><b>Project structure</b></summary>
+
+<br>
+
+```
+app/                 Routes, Server Actions, auth callback, global CSS and tokens
+components/
+  type/              Typing test, surface, live HUD, results panel
+  race/              1v1 lobby, room protocol and race engine
+  progress/          Progress view, tiles, history, weak keys panel
+  drills/            Drills view and the create/edit dialog
+  charts/            Hand-written SVG charts and the keyboard heat map
+  ui/                Panel, Button, Dialog, Dropdown, Toast, Tooltip
+lib/
+  engine.ts          Keystroke processing and scoring
+  analysis.ts        Key scores, weak keys, drill generation
+  store.ts           The local-first, cloud-synced store
+  cloud.ts           Supabase translation layer
+  content.ts         Word lists, classic sentences, code, built-in drills
+supabase/migrations/ The complete, idempotent schema with RLS
+proxy.ts             Next.js 16 Proxy for session refresh
+```
+
+</details>
+
+---
+
 ## Design system
 
-**Direction: "keycap industrial".** Warm paper surfaces, machined edges, ink
-legends. Cards carry a hard bottom edge and an inset highlight so they read as
-keycaps; the page sits on a faint dot grid.
+**Direction: "keycap industrial".** Warm paper surfaces, machined edges, ink legends. Cards
+carry a hard bottom edge and an inset highlight so they read as keycaps, and the page sits on a
+faint dot grid.
 
-**Colour.** Every colour is a semantic token in `app/globals.css`
-(`--canvas`, `--surface`, `--ink`, `--ink-soft`, `--primary`, `--danger`,
-`--type-pending`, `--chart-1`, and so on), exposed to Tailwind through
-`@theme inline`. Components never use raw hex values. Light is a warm cream
-palette, dark is a warm charcoal one designed separately rather than inverted.
-Three accent themes swap the brand pair while status colours stay fixed, so
-"error" never becomes ambiguous.
+| | |
+| --- | --- |
+| **Colour** | Every colour is a semantic token (`--canvas`, `--ink`, `--primary`, `--danger`, …). Light is warm cream, dark is warm charcoal, and both were designed separately. Accents swap the brand pair while status colours stay fixed, so "error" never becomes ambiguous. Muted text clears 4.5:1 contrast in both themes. |
+| **Type** | **Bricolage Grotesque** for headings and big readouts, **Archivo** for UI text, **JetBrains Mono** for the typing surface, numbers and key legends, chosen so `1` `l` `I` and `0` `O` never blur together. Numbers use tabular figures so digits do not shuffle. |
+| **Shape** | One spacing scale and a squarer radius scale (3/5/8/12/16px) to match the machined feel. |
+| **Motion** | CSS only, with shared timings and one easing curve. Used for purposeful moments: panel reveals, the result rising in, caret travel and pressed-key feedback. |
 
-Muted text tones were measured against their real backgrounds and adjusted to
-clear 4.5:1 in both themes.
+### Accessibility
 
-**Typography.** Three faces, each with one job:
+- Semantic landmarks, a skip link and one `h1` per page
+- A visible focus ring on every focusable element, and no keyboard traps
+- Destructive actions go through a confirmation dialog with focus on Cancel
+- Form fields are label-linked with field-level errors, and input survives a failed submit
+- State is never colour-only: skipped characters are struck through, and every heat-map key
+  shows its accuracy as a number
+- The hidden typing input is labelled and described by the full target text for screen readers
+- Reduced motion is honoured both from the OS and from the in-app setting
 
-- **Bricolage Grotesque** for the wordmark, headings and large score readouts
-- **Archivo** for UI and body text
-- **JetBrains Mono** for the typing surface, numbers and key legends. Chosen for
-  character disambiguation: telling `1`/`l`/`I` and `0`/`O` apart matters more
-  here than anywhere else in the interface.
+---
 
-Numeric readouts use tabular figures so digits do not shuffle as they change.
+<div align="center">
 
-**Spacing and radii.** A single spacing scale, with a squarer radius scale than
-Tailwind's default (3/5/8/12/16px) to match the machined feel.
+**Find your weak keys. Fix them. Get faster.**
 
-## Motion
+[Start typing at klack-typing-trainer.vercel.app](https://klack-typing-trainer.vercel.app)
 
-All motion is CSS. Shared timings and one shared easing curve
-(`--ease-key`) keep the app feeling like one machine. Motion is used for
-purposeful moments only: panel reveals, the results panel rising in, toasts
-popping in, caret movement, hover and press feedback, and the pressed-key travel
-on buttons.
-
-**Reduced motion** is honoured two ways, and both collapse every animation and
-transition to effectively zero, stop the caret blinking and stop the loading
-shimmer:
-
-1. the `prefers-reduced-motion: reduce` media query
-2. the in-app **Reduce motion** setting, for people who want calm UI without
-   changing their OS
-
-## Accessibility
-
-- Semantic landmarks, a skip link, and one `h1` per page
-- Radix primitives handle focus trapping in dialogs, roving tabindex in
-  segmented controls, and ARIA wiring for menus and selects
-- A visible 2px focus ring with a 2px offset on every focusable element
-- Destructive actions route through a confirmation dialog with focus on Cancel
-- Form fields are label-linked, with `aria-invalid` and `aria-describedby`
-  pointing at field-level error text; input is preserved on a failed submit
-- Sortable table headers expose `aria-sort`
-- State is never colour-only: skipped characters are struck through as well as
-  tinted, and every heat-map key shows its accuracy as a number
-- The hidden typing input is labelled and described by the full target text, so
-  the text to type is readable by a screen reader
-- Comfortable touch targets, and a bottom tab bar on phones
+</div>
