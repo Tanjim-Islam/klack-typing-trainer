@@ -84,6 +84,7 @@ interface ResultRowWithKeys {
   words: number;
   samples: number[] | null;
   performance_samples?: unknown;
+  training_details?: unknown;
   result_key_stats: { char: string; hits: number; misses: number }[] | null;
 }
 
@@ -112,6 +113,7 @@ function resultFromRow(row: ResultRowWithKeys): TestResult | null {
     keyStats,
     samples: (row.samples ?? []).map(Number),
     performance: row.performance_samples ?? {},
+    training: row.training_details ?? undefined,
   });
 
   // A single unreadable row is dropped, not fatal: losing one test from a
@@ -138,6 +140,7 @@ function resultToPayload(result: TestResult) {
     words: result.words,
     keyStats: result.keyStats,
     samples: result.samples,
+    ...(result.training ? { training: result.training } : {}),
     ...(result.performance.wpm.length > 0
       ? { performance: result.performance }
       : {}),
@@ -192,16 +195,21 @@ export interface AccountData {
  * rows only — a second query for ~20,000 key-stat rows could be truncated
  * silently, and silently wrong history is worse than slow history.
  */
-export async function fetchAccountData(supabase: SupabaseClient): Promise<AccountData> {
+export async function fetchAccountData(
+  supabase: SupabaseClient,
+): Promise<AccountData> {
   const [profile, settings, initialResults, drills] = await Promise.all([
-    supabase.from("profiles").select("display_name, avatar_url, onboarded").maybeSingle(),
+    supabase
+      .from("profiles")
+      .select("display_name, avatar_url, onboarded")
+      .maybeSingle(),
     supabase.from("user_settings").select("*").maybeSingle(),
     supabase
       .from("test_results")
       .select(
         "client_id, taken_at, mode, label, elapsed_ms, wpm, raw_wpm, accuracy, " +
           "consistency, correct_chars, incorrect_chars, keystrokes, " +
-          "correct_keystrokes, words, samples, performance_samples, " +
+          "correct_keystrokes, words, samples, performance_samples, training_details, " +
           "result_key_stats(char, hits, misses)",
       )
       .order("taken_at", { ascending: false })
@@ -215,8 +223,21 @@ export async function fetchAccountData(supabase: SupabaseClient): Promise<Accoun
   // Keep account sync usable while an app deployment and its additive migration
   // roll out. The legacy RPC ignores the extra JSON key too, so old schemas lose
   // only the new detail rather than blocking the whole account document.
-  const results =
-    initialResults.error && /performance_samples/i.test(initialResults.error.message)
+  let results =
+    initialResults.error &&
+    /training_details/i.test(initialResults.error.message)
+      ? await supabase
+          .from("test_results")
+          .select(
+            "client_id, taken_at, mode, label, elapsed_ms, wpm, raw_wpm, accuracy, " +
+              "consistency, correct_chars, incorrect_chars, keystrokes, correct_keystrokes, " +
+              "words, samples, performance_samples, result_key_stats(char, hits, misses)",
+          )
+          .order("taken_at", { ascending: false })
+          .limit(MAX_RESULTS)
+      : initialResults;
+  results =
+    results.error && /performance_samples/i.test(results.error.message)
       ? await supabase
           .from("test_results")
           .select(
@@ -227,9 +248,10 @@ export async function fetchAccountData(supabase: SupabaseClient): Promise<Accoun
           )
           .order("taken_at", { ascending: false })
           .limit(MAX_RESULTS)
-      : initialResults;
+      : results;
 
-  const firstError = profile.error ?? settings.error ?? results.error ?? drills.error;
+  const firstError =
+    profile.error ?? settings.error ?? results.error ?? drills.error;
   if (firstError) throw new Error(firstError.message);
 
   return {
@@ -253,29 +275,46 @@ export async function fetchAccountData(supabase: SupabaseClient): Promise<Accoun
 /** Chunked so a large first-time upload cannot exceed the request body limit. */
 const UPLOAD_CHUNK = 50;
 
-export async function pushResults(supabase: SupabaseClient, results: TestResult[]) {
+export async function pushResults(
+  supabase: SupabaseClient,
+  results: TestResult[],
+) {
   for (let i = 0; i < results.length; i += UPLOAD_CHUNK) {
     const chunk = results.slice(i, i + UPLOAD_CHUNK).map(resultToPayload);
-    const { error } = await supabase.rpc("save_test_results", { p_results: chunk });
+    const { error } = await supabase.rpc("save_test_results", {
+      p_results: chunk,
+    });
     if (error) throw new Error(error.message);
   }
 }
 
 export async function deleteResult(supabase: SupabaseClient, clientId: string) {
   // The key stats go with it: result_key_stats cascades on result_id.
-  const { error } = await supabase.from("test_results").delete().eq("client_id", clientId);
+  const { error } = await supabase
+    .from("test_results")
+    .delete()
+    .eq("client_id", clientId);
   if (error) throw new Error(error.message);
 }
 
-export async function deleteResults(supabase: SupabaseClient, clientIds: string[]) {
+export async function deleteResults(
+  supabase: SupabaseClient,
+  clientIds: string[],
+) {
   if (clientIds.length === 0) return;
-  const { error } = await supabase.from("test_results").delete().in("client_id", clientIds);
+  const { error } = await supabase
+    .from("test_results")
+    .delete()
+    .in("client_id", clientIds);
   if (error) throw new Error(error.message);
 }
 
 /** Row level security scopes this to the caller, so no user filter is needed. */
 export async function clearResults(supabase: SupabaseClient, userId: string) {
-  const { error } = await supabase.from("test_results").delete().eq("user_id", userId);
+  const { error } = await supabase
+    .from("test_results")
+    .delete()
+    .eq("user_id", userId);
   if (error) throw new Error(error.message);
 }
 
@@ -315,7 +354,10 @@ export async function pushDrills(
 }
 
 export async function deleteDrill(supabase: SupabaseClient, clientId: string) {
-  const { error } = await supabase.from("drills").delete().eq("client_id", clientId);
+  const { error } = await supabase
+    .from("drills")
+    .delete()
+    .eq("client_id", clientId);
   if (error) throw new Error(error.message);
 }
 
@@ -333,7 +375,10 @@ export async function setOnboarded(
 
 /** Used by "Reset everything" while signed in: wipe the account clean. */
 export async function resetAccount(supabase: SupabaseClient, userId: string) {
-  const results = await supabase.from("test_results").delete().eq("user_id", userId);
+  const results = await supabase
+    .from("test_results")
+    .delete()
+    .eq("user_id", userId);
   if (results.error) throw new Error(results.error.message);
 
   const drills = await supabase.from("drills").delete().eq("user_id", userId);

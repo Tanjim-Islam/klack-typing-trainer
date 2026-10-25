@@ -51,7 +51,7 @@ flowchart LR
 1. **Start typing.** The clock starts on your first keystroke, not before.
 2. **Read the result.** Speed, accuracy, consistency, a pace chart and the keys you fumbled.
 3. **Open Progress.** Speed over time and an accuracy heat map of the whole keyboard.
-4. **Press _Drill these keys_.** Klack builds a drill from your five weakest keys and loads it.
+4. **Press _Fix my mistakes_ or _Practise these targets_.** Klack turns missed words, exact keys and letter pairs into practice.
 5. **Repeat.** The streak counter and trend arrow tell you whether it is working.
 
 No account is needed. Sign in only if you want your history in the cloud and on every device.
@@ -59,6 +59,13 @@ No account is needed. Sign in only if you want your history in the cloud and on 
 ---
 
 ## Features
+
+- **Fix my mistakes:** practise missed words and keys immediately after a test, including mistakes you corrected.
+- **Five-minute daily practice:** five one-minute rounds chosen from recent mistakes, with progress saved between rounds.
+- **Smarter targets:** capitals, symbols and letter pairs stay separate. Targets retire as recent accuracy improves.
+- **Fair comparisons:** compare matching test settings and text versions. Older results remain in history.
+- **Drill history:** track speed and accuracy for each saved drill, even after renaming it.
+- **Quick rematches:** both racers can accept another round in the same room, with fresh shared text.
 
 ### ⌨️ A typing surface that gets out of the way
 
@@ -123,8 +130,8 @@ characters on a single frame-synchronized animation loop.
 - Speed over time with an in-chart card for WPM, raw, accuracy, peak burst, errors and change
 - **A keyboard heat map** where hotter keys are the ones you miss most, every key labelled with
   its accuracy as a number
-- Weakest keys ranked by **total mistakes, not percentage**: a key you miss 30 times matters
-  more than one you missed once in twelve tries
+- Recent trouble spots use up to 40 attempts per exact character or pair, across the latest
+  20 tests. Targets leave the list when recent accuracy reaches 97%.
 - A 28-day practice strip and a searchable, sortable, filterable test history
 
 ### 🎯 Drills
@@ -234,6 +241,7 @@ your weak-key analysis.
 | Keys | What happens |
 | --- | --- |
 | <kbd>Tab</kbd> | Fresh text and a reset timer, without leaving focus mode |
+| <kbd>Enter</kbd> during a test | Fresh text; pressing it immediately after Tab keeps that same new passage |
 | <kbd>Esc</kbd> | Reset the same text and leave focus mode |
 | <kbd>Shift</kbd> + <kbd>Tab</kbd> | Move focus out of the typing field |
 | <kbd>Backspace</kbd> | Step back one character |
@@ -284,6 +292,8 @@ Sign-in, cloud history and live races need a [Supabase](https://supabase.com) pr
 
 2. Run [`supabase/migrations/0001_init.sql`](supabase/migrations/0001_init.sql) against your
    database. It is idempotent, so re-running it is safe.
+   Existing installations can apply [`20261025054548_training_details.sql`](supabase/migrations/20261025054548_training_details.sql)
+   to add practice metadata and the performance column if it is missing. Apply it before deploying these practice features so detailed history syncs across devices.
 3. In the Supabase dashboard, add your app's URLs under **Authentication → URL Configuration**
    (for example `http://localhost:3000/**`), and enable the **Google** provider if you want
    "Continue with Google".
@@ -297,7 +307,10 @@ configured, and everything else keeps working locally.
 | `npm run build` | Production build |
 | `npm run start` | Serve the production build |
 | `npm run lint` | ESLint |
+| `npm test` | Engine, practice, persistence, cloud translation and rematch protocol checks |
 | `npx tsc --noEmit` | Strict type check |
+
+Browser and disposable-database checks are documented in [tests/README.md](tests/README.md).
 
 ---
 

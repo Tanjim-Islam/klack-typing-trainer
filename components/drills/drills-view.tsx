@@ -12,7 +12,14 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { formatInt, formatRelative } from "@/lib/format";
+import {
+  formatInt,
+  formatRelative,
+  formatDecimal,
+  formatDateTime,
+  formatSigned,
+} from "@/lib/format";
+import { textId } from "@/lib/practice";
 import {
   createDrill,
   deleteDrill,
@@ -21,7 +28,7 @@ import {
   queueDrill,
   useStore,
 } from "@/lib/store";
-import type { Drill, DrillFormValues } from "@/lib/types";
+import type { Drill, DrillFormValues, TestResult } from "@/lib/types";
 import { Badge, EmptyState, Skeleton } from "@/components/ui/bits";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -30,6 +37,7 @@ import { Panel, PanelBody, PanelHeader } from "@/components/ui/panel";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useToast } from "@/components/ui/toast";
 import { DrillFormDialog } from "./drill-form-dialog";
+import { DialogRoot, DialogContent } from "@/components/ui/dialog";
 
 function DrillCard({
   drill,
@@ -37,14 +45,30 @@ function DrillCard({
   onEdit,
   onDuplicate,
   onDelete,
+  results,
 }: {
   drill: Drill;
   onPractise: () => void;
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
+  results: TestResult[];
 }) {
   const words = drill.text.trim().split(/\s+/).length;
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const history = results
+    .filter((r) => r.training?.drillId === drill.id)
+    .sort((a, b) => b.at - a.at);
+  const current = history.filter(
+    (r) => r.training?.benchmark.textId === textId(drill.text),
+  );
+  const latest = current[0];
+  const previous = current.find(
+    (r, index) =>
+      index > 0 &&
+      r.training?.benchmark.stopOnError ===
+        latest?.training?.benchmark.stopOnError,
+  );
 
   return (
     <Panel className="flex flex-col">
@@ -77,12 +101,33 @@ function DrillCard({
           {formatInt(words)} words - {formatInt(drill.text.length)} characters
           {drill.builtIn ? "" : ` - edited ${formatRelative(drill.updatedAt)}`}
         </p>
+        {latest ? (
+          <p className="mt-3 text-xs text-ink-soft">
+            Latest: {formatDecimal(latest.wpm, 0)} wpm ·{" "}
+            {formatDecimal(latest.accuracy, 1)}% accuracy
+            {previous
+              ? ` · ${formatSigned(latest.wpm - previous.wpm, 1)} wpm, ${formatSigned(latest.accuracy - previous.accuracy, 1)}% accuracy since last matching run`
+              : " · First run of this text"}
+          </p>
+        ) : (
+          <p className="mt-3 text-xs text-ink-faint">
+            No runs of this text yet.
+          </p>
+        )}
       </div>
 
       <div className="flex items-center gap-1 border-t border-line bg-muted/30 px-3 py-2.5">
         <Button variant="primary" size="sm" onClick={onPractise}>
           <Play className="size-3.5" aria-hidden />
           Practise
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setHistoryOpen(true)}
+          aria-label={`History for ${drill.name}`}
+        >
+          History ({history.length})
         </Button>
 
         <Tooltip content="Duplicate">
@@ -122,6 +167,55 @@ function DrillCard({
           </>
         )}
       </div>
+      <DialogRoot open={historyOpen} onOpenChange={setHistoryOpen}>
+        <DialogContent
+          title={`${drill.name}: practice history`}
+          description="Runs stay linked when you rename a drill. Edited text is marked separately; comparisons use matching text and error settings."
+        >
+          {history.length ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="text-ink-faint">
+                    <th className="pb-3">When</th>
+                    <th>WPM</th>
+                    <th>Accuracy</th>
+                    <th>Text</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((r) => (
+                    <tr key={r.id} className="border-t border-line">
+                      <td className="py-3 pr-3 text-ink-soft">
+                        {formatDateTime(r.at)}
+                      </td>
+                      <td className="pr-3 font-mono">
+                        {formatDecimal(r.wpm, 1)}
+                      </td>
+                      <td className="pr-3 font-mono">
+                        {formatDecimal(r.accuracy, 1)}%
+                      </td>
+                      <td className="text-xs text-ink-soft">
+                        {r.training?.benchmark.textId === textId(drill.text)
+                          ? "Current"
+                          : "Earlier version"}
+                        {r.training?.benchmark.stopOnError
+                          ? " · stop on error"
+                          : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-ink-soft">
+              Finish a run to start this drill&apos;s history. Older results
+              without a drill ID stay in Progress.
+            </p>
+          )}
+        </DialogContent>
+      </DialogRoot>
     </Panel>
   );
 }
@@ -129,7 +223,7 @@ function DrillCard({
 export function DrillsView() {
   const router = useRouter();
   const toast = useToast();
-  const { ready, drills } = useStore();
+  const { ready, drills, results } = useStore();
 
   const [query, setQuery] = useState("");
   const [formOpen, setFormOpen] = useState(false);
@@ -151,7 +245,7 @@ export function DrillsView() {
   const builtIn = filtered.filter((d) => d.builtIn);
 
   const practise = (drill: Drill) => {
-    queueDrill({ name: drill.name, text: drill.text });
+    queueDrill({ id: drill.id, name: drill.name, text: drill.text });
     router.push("/");
   };
 
@@ -162,7 +256,11 @@ export function DrillsView() {
     } else {
       const created = createDrill(values);
       if (created) {
-        toast({ tone: "success", message: "Drill created", detail: created.name });
+        toast({
+          tone: "success",
+          message: "Drill created",
+          detail: created.name,
+        });
       } else {
         toast({ tone: "error", message: "Could not save that drill" });
       }
@@ -242,6 +340,7 @@ export function DrillsView() {
                   <DrillCard
                     key={drill.id}
                     drill={drill}
+                    results={results}
                     onPractise={() => practise(drill)}
                     onEdit={() => {
                       setEditing(drill);
@@ -292,6 +391,7 @@ export function DrillsView() {
                   <DrillCard
                     key={drill.id}
                     drill={drill}
+                    results={results}
                     onPractise={() => practise(drill)}
                     onEdit={() => undefined}
                     onDuplicate={() => {
@@ -332,9 +432,11 @@ export function DrillsView() {
         body={
           pendingDelete ? (
             <>
-              <strong className="font-semibold text-ink">{pendingDelete.name}</strong>{" "}
-              will be removed. Test results from practising it stay in your history.
-              This cannot be undone.
+              <strong className="font-semibold text-ink">
+                {pendingDelete.name}
+              </strong>{" "}
+              will be removed. Test results from practising it stay in your
+              history. This cannot be undone.
             </>
           ) : null
         }
@@ -342,7 +444,11 @@ export function DrillsView() {
         onConfirm={() => {
           if (pendingDelete) {
             deleteDrill(pendingDelete.id);
-            toast({ tone: "success", message: "Drill deleted", detail: pendingDelete.name });
+            toast({
+              tone: "success",
+              message: "Drill deleted",
+              detail: pendingDelete.name,
+            });
           }
           setPendingDelete(null);
         }}

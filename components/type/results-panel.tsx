@@ -1,13 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ArrowRight,
-  Info,
-  RotateCcw,
-  SkipForward,
-  Trophy,
-} from "lucide-react";
+import { ArrowRight, Info, RotateCcw, SkipForward, Trophy } from "lucide-react";
 import { worstKeysInResult } from "@/lib/analysis";
 import { formatDecimal, formatDuration, formatInt } from "@/lib/format";
 import { charName } from "@/lib/keyboard";
@@ -24,12 +18,18 @@ export function ResultsPanel({
   isPersonalBest,
   onNext,
   onRepeat,
+  onRepair,
+  nextLabel = "Next test",
+  dailyComplete = false,
 }: {
   result: TestResult;
   recorded: boolean;
   isPersonalBest: boolean;
   onNext: () => void;
   onRepeat: () => void;
+  onRepair?: () => void;
+  nextLabel?: string;
+  dailyComplete?: boolean;
 }) {
   const worst = worstKeysInResult(result);
   const hasConsistency = result.samples.length >= 3;
@@ -38,6 +38,14 @@ export function ResultsPanel({
 
   return (
     <Panel className="animate-rise overflow-hidden">
+      {dailyComplete ? (
+        <p
+          role="status"
+          className="bg-success-soft px-5 py-4 text-sm font-semibold text-success"
+        >
+          Five minutes complete. Your daily practice is saved.
+        </p>
+      ) : null}
       <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3.5 sm:px-6">
         <Badge tone="primary">{MODE_LABELS[result.mode]}</Badge>
         <span className="text-sm font-medium text-ink">{result.label}</span>
@@ -73,7 +81,9 @@ export function ResultsPanel({
             />
             <Stat
               label="Consistency"
-              value={hasConsistency ? formatDecimal(result.consistency, 0) : "-"}
+              value={
+                hasConsistency ? formatDecimal(result.consistency, 0) : "-"
+              }
               unit={hasConsistency ? "%" : undefined}
               size="md"
               hint="How even your pace was"
@@ -95,11 +105,7 @@ export function ResultsPanel({
               size="sm"
               tone={result.incorrectChars > 0 ? "danger" : "ink"}
             />
-            <Stat
-              label="Words"
-              value={formatInt(result.words)}
-              size="sm"
-            />
+            <Stat label="Words" value={formatInt(result.words)} size="sm" />
           </div>
         </div>
 
@@ -138,9 +144,9 @@ export function ResultsPanel({
         <div className="mx-5 mb-5 flex items-start gap-2.5 rounded-lg border border-info/25 bg-info-soft px-3.5 py-3 sm:mx-6 sm:mb-6">
           <Info className="mt-px size-4 shrink-0 text-info" aria-hidden />
           <p className="text-xs leading-relaxed text-ink-soft">
-            This run was not saved to your history. Klack keeps tests of at least
-            three seconds and ten keystrokes, so short warm-ups do not skew your
-            averages.
+            This run was not saved to your history. Klack keeps tests of at
+            least three seconds and ten keystrokes, so short warm-ups do not
+            skew your averages.
           </p>
         </div>
       ) : null}
@@ -148,7 +154,7 @@ export function ResultsPanel({
       <div className="flex flex-wrap items-center gap-2 border-t border-line bg-muted/40 px-5 py-4 sm:px-6">
         <Button variant="primary" onClick={onNext}>
           <SkipForward className="size-4" aria-hidden />
-          Next test
+          {nextLabel}
           {/* Left as a real keycap. Tinting it to sit on the primary button
               cannot work: `.keycap` is declared after Tailwind's utilities in
               the same layer, so its background-color wins over any `bg-*`
@@ -157,6 +163,12 @@ export function ResultsPanel({
               in both. */}
           <Kbd className="ml-1">Tab</Kbd>
         </Button>
+        {onRepair &&
+        Object.values(result.keyStats).some((tally) => tally.m > 0) ? (
+          <Button variant="outline" onClick={onRepair}>
+            Fix my mistakes
+          </Button>
+        ) : null}
         <Button variant="keycap" onClick={onRepeat}>
           <RotateCcw className="size-4" aria-hidden />
           Same text again

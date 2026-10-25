@@ -165,7 +165,7 @@ export function ModeBar({
             <Select
               ariaLabel="Choose a drill"
               className="h-8 max-w-[16rem] text-[0.8125rem]"
-              value={drills.some((d) => d.id === config.id) ? config.id : drills[0].id}
+              value={config.id}
               onValueChange={(id) => {
                 const drill = drills.find((d) => d.id === id);
                 if (drill) {
@@ -177,7 +177,10 @@ export function ModeBar({
                   });
                 }
               }}
-              options={drills.map((d) => ({ value: d.id, label: d.name }))}
+              options={[
+                ...(!drills.some((d) => d.id === config.id) ? [{ value: config.id, label: config.name }] : []),
+                ...drills.map((d) => ({ value: d.id, label: d.name })),
+              ]}
             />
           ) : null
         ) : null}

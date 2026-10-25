@@ -1,4 +1,4 @@
-import type { PerformanceSeries, TestResult } from "./types";
+import type { PerformanceSeries, TestResult, Training } from "./types";
 
 /**
  * The typing engine. Pure functions over an immutable-ish state object so the
@@ -18,6 +18,10 @@ export interface EngineState {
   keystrokes: number;
   correctKeystrokes: number;
   keyStats: Record<string, KeyTally>;
+  pairStats: Record<string, KeyTally>;
+  wordAt: number[];
+  wordTokens: string[];
+  wordMisses: Record<number, number>;
   /** Set on the first accepted keystroke, used to start the clock. */
   started: boolean;
   /** True once the cursor passes the final character. */
@@ -27,6 +31,18 @@ export interface EngineState {
 }
 
 export function createEngine(target: string): EngineState {
+  const wordAt = new Array<number>(target.length).fill(-1);
+  const wordTokens: string[] = [];
+  for (const match of target.matchAll(/\S+/g)) {
+    const id = wordTokens.push(match[0]) - 1;
+    for (
+      let i = match.index;
+      i <= match.index + match[0].length && i < target.length;
+      i++
+    ) {
+      wordAt[i] = id;
+    }
+  }
   return {
     target,
     states: new Array<CharState>(target.length).fill("pending"),
@@ -34,9 +50,33 @@ export function createEngine(target: string): EngineState {
     keystrokes: 0,
     correctKeystrokes: 0,
     keyStats: {},
+    pairStats: {},
+    wordAt,
+    wordTokens,
+    wordMisses: {},
     started: false,
     complete: false,
     rejections: 0,
+  };
+}
+
+function recordAttempt(state: EngineState, index: number, hit: boolean) {
+  let pairStats = state.pairStats;
+  const pair = state.target.slice(index - 1, index + 1);
+  if (index > 0 && !/\s/.test(pair)) {
+    pairStats = tally(
+      pairStats,
+      pair,
+      hit && state.states[index - 1] === "correct",
+    );
+  }
+  const word = state.wordAt[index];
+  return {
+    pairStats,
+    wordMisses:
+      !hit && word >= 0
+        ? { ...state.wordMisses, [word]: (state.wordMisses[word] ?? 0) + 1 }
+        : state.wordMisses,
   };
 }
 
@@ -80,6 +120,7 @@ export function applyChar(
       // Last word of the text: nothing to skip to, so treat it as a rejection.
       return {
         ...state,
+        ...recordAttempt(state, state.cursor, false),
         keystrokes: state.keystrokes + 1,
         keyStats: tally(state.keyStats, expected, false),
         rejections: state.rejections + 1,
@@ -89,10 +130,12 @@ export function applyChar(
 
     const states = state.states.slice();
     let keyStats = state.keyStats;
+    let training = { pairStats: state.pairStats, wordMisses: state.wordMisses };
     for (let i = state.cursor; i < nextSpace; i++) {
       if (states[i] === "pending") {
         states[i] = "skipped";
         keyStats = tally(keyStats, state.target[i], false);
+        training = recordAttempt({ ...state, ...training }, i, false);
       }
     }
     states[nextSpace] = "correct";
@@ -100,6 +143,7 @@ export function applyChar(
     const cursor = nextSpace + 1;
     return {
       ...state,
+      ...training,
       states,
       keyStats: tally(keyStats, " ", true),
       cursor,
@@ -115,6 +159,7 @@ export function applyChar(
   if (!correct && stopOnError) {
     return {
       ...state,
+      ...recordAttempt(state, state.cursor, false),
       keystrokes: state.keystrokes + 1,
       keyStats: tally(state.keyStats, expected, false),
       rejections: state.rejections + 1,
@@ -128,6 +173,7 @@ export function applyChar(
 
   return {
     ...state,
+    ...recordAttempt(state, state.cursor, correct),
     states,
     cursor,
     keystrokes: state.keystrokes + 1,
@@ -138,7 +184,11 @@ export function applyChar(
   };
 }
 
-function rangeIsCorrect(states: CharState[], start: number, end: number): boolean {
+function rangeIsCorrect(
+  states: CharState[],
+  start: number,
+  end: number,
+): boolean {
   for (let index = start; index < end; index++) {
     if (states[index] !== "correct") return false;
   }
@@ -146,7 +196,10 @@ function rangeIsCorrect(states: CharState[], start: number, end: number): boolea
 }
 
 /** Steps back one character, or clears the current unfinished/incorrect word. */
-export function applyBackspace(state: EngineState, wholeWord = false): EngineState {
+export function applyBackspace(
+  state: EngineState,
+  wholeWord = false,
+): EngineState {
   if (state.cursor === 0) return state;
 
   let target = state.cursor - 1;
@@ -154,7 +207,8 @@ export function applyBackspace(state: EngineState, wholeWord = false): EngineSta
     const previousIndex = state.cursor - 1;
 
     if (state.target[previousIndex] === " ") {
-      const previousWordStart = state.target.lastIndexOf(" ", previousIndex - 1) + 1;
+      const previousWordStart =
+        state.target.lastIndexOf(" ", previousIndex - 1) + 1;
       const previousWordCorrect = rangeIsCorrect(
         state.states,
         previousWordStart,
@@ -164,7 +218,8 @@ export function applyBackspace(state: EngineState, wholeWord = false): EngineSta
       // A committed correct word is a boundary, just like Monkeytype's default
       // behavior. If only its separator was wrong, clear the separator without
       // touching the word itself. Incorrect words remain available for repair.
-      if (previousWordCorrect && state.states[previousIndex] === "correct") return state;
+      if (previousWordCorrect && state.states[previousIndex] === "correct")
+        return state;
       target = previousWordCorrect ? previousIndex : previousWordStart;
     } else {
       const currentWordStart = state.target.lastIndexOf(" ", previousIndex) + 1;
@@ -218,7 +273,8 @@ export function countChars(state: EngineState) {
   let incorrect = 0;
   for (let i = 0; i < state.cursor; i++) {
     if (state.states[i] === "correct") correct++;
-    else if (state.states[i] === "wrong" || state.states[i] === "skipped") incorrect++;
+    else if (state.states[i] === "wrong" || state.states[i] === "skipped")
+      incorrect++;
   }
   return { correct, incorrect };
 }
@@ -229,7 +285,7 @@ function countErrors(state: EngineState): number {
 
 export function grossWpm(correctChars: number, elapsedMs: number): number {
   if (elapsedMs <= 0) return 0;
-  return (correctChars / CHARS_PER_WORD) / (elapsedMs / 60000);
+  return correctChars / CHARS_PER_WORD / (elapsedMs / 60000);
 }
 
 /**
@@ -256,7 +312,9 @@ export function score(
   const wpm = minutes > 0 ? correct / CHARS_PER_WORD / minutes : 0;
   const rawWpm = minutes > 0 ? state.keystrokes / CHARS_PER_WORD / minutes : 0;
   const accuracy =
-    state.keystrokes > 0 ? (state.correctKeystrokes / state.keystrokes) * 100 : 0;
+    state.keystrokes > 0
+      ? (state.correctKeystrokes / state.keystrokes) * 100
+      : 0;
 
   return {
     wpm: round1(Math.min(wpm, MAX_WPM)),
@@ -323,7 +381,10 @@ export function buildPerformanceHistory(
 ): PerformanceHistory {
   const elapsed = Math.max(0, elapsedMs);
   const fullSeconds = Math.floor(elapsed / 1000);
-  const boundaries = Array.from({ length: fullSeconds }, (_, index) => (index + 1) * 1000);
+  const boundaries = Array.from(
+    { length: fullSeconds },
+    (_, index) => (index + 1) * 1000,
+  );
   const remainder = elapsed - fullSeconds * 1000;
   if (remainder >= 500) boundaries.push(elapsed);
 
@@ -351,22 +412,25 @@ export function buildPerformanceHistory(
     }
 
     const intervalMs = boundary - previousBoundary;
-    const intervalCorrect = Math.max(0, current.correctChars - previous.correctChars);
-    const intervalKeystrokes = Math.max(0, current.keystrokes - previous.keystrokes);
+    const intervalCorrect = Math.max(
+      0,
+      current.correctChars - previous.correctChars,
+    );
+    const intervalKeystrokes = Math.max(
+      0,
+      current.keystrokes - previous.keystrokes,
+    );
     const intervalErrors = Math.max(0, current.errors - previous.errors);
 
-    samples.push(round1(Math.min(MAX_WPM, grossWpm(intervalCorrect, intervalMs))));
+    samples.push(
+      round1(Math.min(MAX_WPM, grossWpm(intervalCorrect, intervalMs))),
+    );
     performance.elapsedMs.push(Math.round(boundary));
     performance.wpm.push(
       round1(Math.min(MAX_WPM, grossWpm(current.correctChars, boundary))),
     );
     performance.rawWpm.push(
-      round1(
-        Math.min(
-          MAX_WPM,
-          grossWpm(current.keystrokes, boundary),
-        ),
-      ),
+      round1(Math.min(MAX_WPM, grossWpm(current.keystrokes, boundary))),
     );
     performance.burst.push(
       round1(Math.min(MAX_WPM, grossWpm(intervalKeystrokes, intervalMs))),
@@ -385,7 +449,9 @@ export const MIN_RECORDED_MS = 3000;
 export const MIN_RECORDED_KEYSTROKES = 10;
 
 export function isRecordable(state: EngineState, elapsedMs: number): boolean {
-  return elapsedMs >= MIN_RECORDED_MS && state.keystrokes >= MIN_RECORDED_KEYSTROKES;
+  return (
+    elapsedMs >= MIN_RECORDED_MS && state.keystrokes >= MIN_RECORDED_KEYSTROKES
+  );
 }
 
 export function buildResult(args: {
@@ -396,6 +462,7 @@ export function buildResult(args: {
   elapsedMs: number;
   samples: number[];
   performance?: PerformanceSeries;
+  training?: Omit<Training, "missedWords" | "pairStats">;
   at: number;
 }): TestResult {
   const s = score(args.state, args.elapsedMs, args.samples);
@@ -416,6 +483,21 @@ export function buildResult(args: {
     words: s.words,
     keyStats: args.state.keyStats,
     samples: args.samples.map(round1).slice(0, 600),
+    training: args.training
+      ? {
+          ...args.training,
+          missedWords: Object.entries(args.state.wordMisses)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 40)
+            .map(([index, misses]) => ({
+              word: args.state.wordTokens[Number(index)].slice(0, 200),
+              misses,
+            })),
+          pairStats: Object.fromEntries(
+            Object.entries(args.state.pairStats).slice(0, 512),
+          ),
+        }
+      : undefined,
     performance: args.performance ?? {
       elapsedMs: [],
       wpm: [],

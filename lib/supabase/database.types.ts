@@ -81,6 +81,7 @@ export interface Database {
           words: number;
           samples: number[];
           performance_samples: Json;
+          training_details: Json | null;
           created_at: string;
         };
         Insert: Omit<Database["public"]["Tables"]["test_results"]["Row"], "id" | "created_at"> & {

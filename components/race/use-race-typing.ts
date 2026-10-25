@@ -38,9 +38,13 @@ export function useRaceTyping({
   start: RaceStart | null;
   settings: Settings;
   onProgress: (snapshot: RaceLiveSnapshot) => void;
-  onFinish: (summary: Omit<RaceFinish, "version" | "raceId" | "playerId">) => void;
+  onFinish: (
+    summary: Omit<RaceFinish, "version" | "raceId" | "playerId">,
+  ) => void;
 }) {
-  const [engine, setEngine] = useState<EngineState>(() => createEngine("Waiting for race"));
+  const [engine, setEngine] = useState<EngineState>(() =>
+    createEngine("Waiting for race"),
+  );
   const [phase, setPhase] = useState<RaceTypingPhase>("waiting");
   const [countdown, setCountdown] = useState(0);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -96,6 +100,15 @@ export function useRaceTyping({
         samples: history.samples,
         performance: history.performance,
         at: Date.now(),
+        training: {
+          source: "race",
+          benchmark: {
+            seconds: activeStart.config.duration,
+            punctuation: activeStart.config.content === "literature",
+            numbers: false,
+            stopOnError: false,
+          },
+        },
       });
 
       const shouldRecord = isRecordable(state, elapsed);
@@ -182,10 +195,14 @@ export function useRaceTyping({
       const correct = countChars(state).correct;
       onProgressRef.current({
         cursor: state.cursor,
-        progress: state.target.length ? Math.min(1, state.cursor / state.target.length) : 0,
+        progress: state.target.length
+          ? Math.min(1, state.cursor / state.target.length)
+          : 0,
         wpm: Math.min(MAX_WPM, correct / 5 / (elapsed / 60000)),
         accuracy:
-          state.keystrokes > 0 ? (state.correctKeystrokes / state.keystrokes) * 100 : 100,
+          state.keystrokes > 0
+            ? (state.correctKeystrokes / state.keystrokes) * 100
+            : 100,
       });
     };
 
@@ -202,7 +219,9 @@ export function useRaceTyping({
       if (next === previous) return;
 
       engineRef.current = next;
-      performanceRef.current.push(createPerformanceSnapshot(next, elapsedNow()));
+      performanceRef.current.push(
+        createPerformanceSnapshot(next, elapsedNow()),
+      );
       setEngine(next);
       if (settings.sound) {
         playClick(next.rejections > previous.rejections ? "error" : "key");
@@ -218,7 +237,9 @@ export function useRaceTyping({
       const next = applyBackspace(engineRef.current, wholeWord);
       if (next === engineRef.current) return;
       engineRef.current = next;
-      performanceRef.current.push(createPerformanceSnapshot(next, elapsedNow()));
+      performanceRef.current.push(
+        createPerformanceSnapshot(next, elapsedNow()),
+      );
       setEngine(next);
     },
     [elapsedNow],
@@ -243,6 +264,9 @@ export function useRaceTyping({
       if (event.key.length === 1) {
         event.preventDefault();
         handledByKeydown = true;
+        queueMicrotask(() => {
+          handledByKeydown = false;
+        });
         pushChar(event.key);
       }
     };
@@ -270,8 +294,12 @@ export function useRaceTyping({
     return {
       wpm: Math.min(MAX_WPM, correct / 5 / minutes),
       accuracy:
-        engine.keystrokes > 0 ? (engine.correctKeystrokes / engine.keystrokes) * 100 : 100,
-      progress: engine.target.length ? Math.min(1, engine.cursor / engine.target.length) : 0,
+        engine.keystrokes > 0
+          ? (engine.correctKeystrokes / engine.keystrokes) * 100
+          : 100,
+      progress: engine.target.length
+        ? Math.min(1, engine.cursor / engine.target.length)
+        : 0,
     };
   }, [elapsedMs, engine]);
 

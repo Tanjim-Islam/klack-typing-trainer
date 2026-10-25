@@ -20,6 +20,7 @@ import type { CharState } from "@/lib/engine";
 import { createId, formatClock, formatDecimal } from "@/lib/format";
 import {
   createRaceConfig,
+  acceptsRaceStart,
   createRaceIdentity,
   displayRaceCode,
   loadRaceConfig,
@@ -69,7 +70,13 @@ export function RaceRoom({ code }: { code: string }) {
   const suggestedName =
     account?.displayName ?? account?.email?.split("@")[0] ?? "Guest typist";
 
-  return <BootedRaceRoom code={code} settings={settings} suggestedName={suggestedName} />;
+  return (
+    <BootedRaceRoom
+      code={code}
+      settings={settings}
+      suggestedName={suggestedName}
+    />
+  );
 }
 
 function BootedRaceRoom({
@@ -131,12 +138,16 @@ function ConnectedRaceRoom({
     supabaseConfigured ? "connecting" : "error",
   );
   const [connectionError, setConnectionError] = useState<string | null>(() =>
-    supabaseConfigured ? null : "Supabase Realtime is not configured in this deployment.",
+    supabaseConfigured
+      ? null
+      : "Supabase Realtime is not configured in this deployment.",
   );
   const [players, setPlayers] = useState<RacePresence[]>([]);
   const [config, setConfig] = useState<RaceConfig | null>(initialConfig);
   const [startSignal, setStartSignal] = useState<RaceStart | null>(null);
-  const [remoteProgress, setRemoteProgress] = useState<RaceProgress | null>(null);
+  const [remoteProgress, setRemoteProgress] = useState<RaceProgress | null>(
+    null,
+  );
   const [remoteFinish, setRemoteFinish] = useState<RaceFinish | null>(null);
   const [focused, setFocused] = useState(false);
   const [waitExpired, setWaitExpired] = useState(false);
@@ -144,6 +155,7 @@ function ConnectedRaceRoom({
   const channelRef = useRef<RealtimeChannel | null>(null);
   const configRef = useRef<RaceConfig | null>(initialConfig);
   const raceIdRef = useRef<string | null>(null);
+  const opponentIdRef = useRef<string | null>(null);
   const startSentRef = useRef(false);
   const [initialPresence] = useState<RacePresence>(() => ({
     playerId: identity.playerId,
@@ -152,6 +164,7 @@ function ConnectedRaceRoom({
     joinedAt: Date.now(),
     ready: false,
     status: "lobby",
+    raceId: null,
   }));
   const presenceRef = useRef(initialPresence);
 
@@ -214,6 +227,9 @@ function ConnectedRaceRoom({
         }
       })
       .on("broadcast", { event: "room-state" }, ({ payload }) => {
+        // The accepted start owns an active round's text. A late lobby sync
+        // must never overwrite the new passage during a rematch.
+        if (raceIdRef.current) return;
         const parsed = raceConfigSchema.safeParse(payload);
         if (!parsed.success || parsed.data.code !== code) return;
         configRef.current = parsed.data;
@@ -225,7 +241,18 @@ function ConnectedRaceRoom({
       .on("broadcast", { event: "race-start" }, ({ payload }) => {
         const parsed = raceStartSchema.safeParse(payload);
         if (!parsed.success || parsed.data.config.code !== code) return;
+        if (
+          !acceptsRaceStart(
+            parsed.data,
+            presenceRef.current,
+            raceIdRef.current,
+            configRef.current?.hostId,
+          )
+        )
+          return;
         raceIdRef.current = parsed.data.raceId;
+        opponentIdRef.current =
+          parsed.data.playerIds.find((id) => id !== identity.playerId) ?? null;
         configRef.current = parsed.data.config;
         startSentRef.current = true;
         if (active) {
@@ -233,14 +260,18 @@ function ConnectedRaceRoom({
           setRemoteProgress(null);
           setRemoteFinish(null);
           setStartSignal(parsed.data);
-          void updatePresence({ ready: false, status: "racing" });
+          void updatePresence({
+            ready: false,
+            status: "racing",
+            raceId: parsed.data.raceId,
+          });
         }
       })
       .on("broadcast", { event: "race-progress" }, ({ payload }) => {
         const parsed = raceProgressSchema.safeParse(payload);
         if (
           !parsed.success ||
-          parsed.data.playerId === identity.playerId ||
+          parsed.data.playerId !== opponentIdRef.current ||
           parsed.data.raceId !== raceIdRef.current
         ) {
           return;
@@ -251,7 +282,7 @@ function ConnectedRaceRoom({
         const parsed = raceFinishSchema.safeParse(payload);
         if (
           !parsed.success ||
-          parsed.data.playerId === identity.playerId ||
+          parsed.data.playerId !== opponentIdRef.current ||
           parsed.data.raceId !== raceIdRef.current
         ) {
           return;
@@ -271,13 +302,19 @@ function ConnectedRaceRoom({
               payload: configRef.current,
             });
           } else {
-            void channel.send({ type: "broadcast", event: "state-request", payload: {} });
+            void channel.send({
+              type: "broadcast",
+              event: "state-request",
+              payload: {},
+            });
           }
           return;
         }
         if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
           setConnection("error");
-          setConnectionError(error?.message ?? "The live room connection failed.");
+          setConnectionError(
+            error?.message ?? "The live room connection failed.",
+          );
         }
       });
 
@@ -290,7 +327,8 @@ function ConnectedRaceRoom({
   }, [code, identity.playerId, identity.role, updatePresence]);
 
   useEffect(() => {
-    if (identity.role !== "guest" || config || connection !== "connected") return;
+    if (identity.role !== "guest" || config || connection !== "connected")
+      return;
     const id = window.setTimeout(() => setWaitExpired(true), 8000);
     return () => window.clearTimeout(id);
   }, [config, connection, identity.role]);
@@ -320,6 +358,7 @@ function ConnectedRaceRoom({
         ...summary,
       });
       void updatePresence({ ready: false, status: "finished" });
+      startSentRef.current = false;
     },
     [identity.playerId, sendBroadcast, updatePresence],
   );
@@ -341,17 +380,33 @@ function ConnectedRaceRoom({
     return sorted.slice(0, 2);
   }, [config, players]);
 
-  const currentPlayer = activePlayers.find((player) => player.playerId === identity.playerId);
-  const opponent = activePlayers.find((player) => player.playerId !== identity.playerId);
+  const currentPlayer = activePlayers.find(
+    (player) => player.playerId === identity.playerId,
+  );
+  const opponent = activePlayers.find(
+    (player) => player.playerId !== identity.playerId,
+  );
   const roomFull = players.length > 2 && !currentPlayer;
-  const bothReady = activePlayers.length === 2 && activePlayers.every((player) => player.ready);
+  const bothReady =
+    activePlayers.length === 2 && activePlayers.every((player) => player.ready);
+  const canRematch =
+    !!startSignal &&
+    typing.phase === "finished" &&
+    !!opponent &&
+    !!remoteFinish &&
+    activePlayers.every(
+      (player) =>
+        startSignal.playerIds.includes(player.playerId) &&
+        player.status === "finished" &&
+        player.raceId === startSignal.raceId,
+    );
 
   useEffect(() => {
     if (
       identity.role !== "host" ||
       !config ||
       connection !== "connected" ||
-      startSignal ||
+      (startSignal && !canRematch) ||
       !bothReady ||
       startSentRef.current
     ) {
@@ -362,17 +417,39 @@ function ConnectedRaceRoom({
     const message = raceStartSchema.parse({
       version: 1,
       raceId: createId(),
+      previousRaceId: startSignal?.raceId ?? null,
+      playerIds: activePlayers.map((player) => player.playerId),
       countdownMs: 3000,
-      config,
+      config: startSignal
+        ? createRaceConfig({
+            code,
+            hostId: config.hostId,
+            duration: config.duration,
+            content: config.content,
+          })
+        : config,
     });
     void sendBroadcast("race-start", message).then((status) => {
       if (status !== "ok") {
         startSentRef.current = false;
-        setConnectionError("The shared countdown could not start. Press Start again.");
+        setConnectionError(
+          "The shared countdown could not start. Press Start again.",
+        );
         void updatePresence({ ready: false });
       }
     });
-  }, [bothReady, config, connection, identity.role, sendBroadcast, startSignal, updatePresence]);
+  }, [
+    activePlayers,
+    bothReady,
+    canRematch,
+    code,
+    config,
+    connection,
+    identity.role,
+    sendBroadcast,
+    startSignal,
+    updatePresence,
+  ]);
 
   const focusStage = typing.phase === "countdown" || typing.phase === "running";
   useFocusStage(focusStage);
@@ -381,9 +458,17 @@ function ConnectedRaceRoom({
     const invite = window.location.href;
     try {
       await navigator.clipboard.writeText(invite);
-      toast({ tone: "success", message: "Invite link copied", detail: displayRaceCode(code) });
+      toast({
+        tone: "success",
+        message: "Invite link copied",
+        detail: displayRaceCode(code),
+      });
     } catch {
-      toast({ tone: "error", message: "Could not copy the link", detail: invite });
+      toast({
+        tone: "error",
+        message: "Could not copy the link",
+        detail: invite,
+      });
     }
   };
 
@@ -440,6 +525,15 @@ function ConnectedRaceRoom({
         result={typing.result}
         recorded={typing.recorded}
         remoteFinish={remoteFinish}
+        canRematch={canRematch}
+        rematchReady={!!currentPlayer?.ready}
+        opponentReady={!!opponent?.ready}
+        onRematch={() =>
+          void updatePresence({
+            ready: !currentPlayer?.ready,
+            status: "finished",
+          })
+        }
       />
     );
   }
@@ -458,7 +552,12 @@ function ConnectedRaceRoom({
               {displayRaceCode(code)}
             </p>
           </div>
-          <Button variant="keycap" size="sm" onClick={copyInvite} className="sm:ml-2">
+          <Button
+            variant="keycap"
+            size="sm"
+            onClick={copyInvite}
+            className="sm:ml-2"
+          >
             <Clipboard className="size-3.5" aria-hidden />
             Copy invite
           </Button>
@@ -468,16 +567,20 @@ function ConnectedRaceRoom({
         <PanelBody className="flex flex-col gap-6 p-5 sm:p-6">
           {waitExpired && !config ? (
             <div className="rounded-lg border border-warning/30 bg-warning-soft px-4 py-3">
-              <p className="text-sm font-semibold text-ink">No host is sharing this code yet</p>
+              <p className="text-sm font-semibold text-ink">
+                No host is sharing this code yet
+              </p>
               <p className="mt-1 text-xs leading-relaxed text-ink-soft">
-                Check the eight characters, or ask the host to keep their room page open.
+                Check the eight characters, or ask the host to keep their room
+                page open.
               </p>
             </div>
           ) : null}
 
           {config && !hostConnected && !startSignal ? (
             <div className="rounded-lg border border-warning/30 bg-warning-soft px-4 py-3 text-sm text-ink-soft">
-              The host left before the race started. Ask them to reopen the invite link.
+              The host left before the race started. Ask them to reopen the
+              invite link.
             </div>
           ) : null}
 
@@ -502,7 +605,10 @@ function ConnectedRaceRoom({
           </div>
 
           <div className="grid gap-4 rounded-lg border border-line bg-muted/35 p-4 sm:grid-cols-3">
-            <RaceRule label="Clock" value={config ? `${config.duration} seconds` : "Waiting for host"} />
+            <RaceRule
+              label="Clock"
+              value={config ? `${config.duration} seconds` : "Waiting for host"}
+            />
             <RaceRule
               label="Text"
               value={
@@ -517,7 +623,9 @@ function ConnectedRaceRoom({
           </div>
 
           {config?.source ? (
-            <p className="text-center text-xs text-ink-faint">Text source: {config.source}</p>
+            <p className="text-center text-xs text-ink-faint">
+              Text source: {config.source}
+            </p>
           ) : null}
 
           <div className="flex flex-col items-center gap-3 border-t border-line pt-5">
@@ -525,7 +633,12 @@ function ConnectedRaceRoom({
               variant={currentPlayer?.ready ? "outline" : "primary"}
               size="lg"
               disabled={!config || connection !== "connected" || !currentPlayer}
-              onClick={() => void updatePresence({ ready: !currentPlayer?.ready, status: "lobby" })}
+              onClick={() =>
+                void updatePresence({
+                  ready: !currentPlayer?.ready,
+                  status: "lobby",
+                })
+              }
               className="min-w-56"
             >
               {currentPlayer?.ready ? (
@@ -620,7 +733,9 @@ function RaceFocusStage({
           <p className="mt-3 font-display text-8xl font-extrabold leading-none text-primary tnum">
             {countdown}
           </p>
-          <p className="mt-5 text-sm text-ink-soft">Same text. Same clock. Eyes forward.</p>
+          <p className="mt-5 text-sm text-ink-soft">
+            Same text. Same clock. Eyes forward.
+          </p>
         </div>
       </div>
     );
@@ -636,7 +751,11 @@ function RaceFocusStage({
                 label="Time left"
                 value={formatClock(Math.ceil(remainingMs / 1000))}
               />
-              <RaceReadout label="Speed" value={formatDecimal(wpm, 0)} unit="wpm" />
+              <RaceReadout
+                label="Speed"
+                value={formatDecimal(wpm, 0)}
+                unit="wpm"
+              />
               <RaceReadout
                 label="Accuracy"
                 value={formatDecimal(accuracy, 0)}
@@ -675,8 +794,8 @@ function RaceFocusStage({
               className="absolute inset-0 -z-10 size-full resize-none opacity-0"
             />
             <p id="race-typing-target" className="sr-only">
-              Type the shared race text. The clock continues if focus leaves the field. Text to
-              type: {config.text}
+              Type the shared race text. The clock continues if focus leaves the
+              field. Text to type: {config.text}
             </p>
             <TypingSurface
               text={config.text}
@@ -692,7 +811,10 @@ function RaceFocusStage({
             />
           </div>
 
-          <div className="h-1 overflow-hidden rounded-full bg-muted" aria-hidden>
+          <div
+            className="h-1 overflow-hidden rounded-full bg-muted"
+            aria-hidden
+          >
             <div
               className="h-full rounded-full bg-primary transition-[width] duration-150 ease-linear"
               style={{ width: `${progress * 100}%` }}
@@ -711,6 +833,10 @@ function RaceResultPanel({
   result,
   recorded,
   remoteFinish,
+  canRematch,
+  rematchReady,
+  opponentReady,
+  onRematch,
 }: {
   code: string;
   identity: RaceIdentity;
@@ -718,9 +844,20 @@ function RaceResultPanel({
   result: NonNullable<ReturnType<typeof useRaceTyping>["result"]>;
   recorded: boolean;
   remoteFinish: RaceFinish | null;
+  canRematch: boolean;
+  rematchReady: boolean;
+  opponentReady: boolean;
+  onRematch: () => void;
 }) {
-  const outcome = remoteFinish ? compareRace(result.correctChars, result.accuracy, remoteFinish) : null;
-  const heading = outcome === "win" ? "You won" : outcome === "loss" ? "Your rival won" : "Dead heat";
+  const outcome = remoteFinish
+    ? compareRace(result.correctChars, result.accuracy, remoteFinish)
+    : null;
+  const heading =
+    outcome === "win"
+      ? "You won"
+      : outcome === "loss"
+        ? "Your rival won"
+        : "Dead heat";
 
   return (
     <div className="flex flex-col gap-5">
@@ -745,7 +882,9 @@ function RaceResultPanel({
             winner={outcome === "win"}
           />
           <div className="flex items-center justify-center" aria-hidden>
-            <span className="font-display text-sm font-extrabold text-ink-faint">VS</span>
+            <span className="font-display text-sm font-extrabold text-ink-faint">
+              VS
+            </span>
           </div>
           {remoteFinish ? (
             <ResultLane
@@ -758,15 +897,26 @@ function RaceResultPanel({
             />
           ) : (
             <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-line bg-muted/30 text-center">
-              <Loader2 className="size-5 animate-spin text-primary" aria-hidden />
-              <p className="mt-3 text-sm font-medium text-ink">Waiting for the other finish</p>
-              <p className="mt-1 text-xs text-ink-faint">Their result will appear live.</p>
+              <Loader2
+                className="size-5 animate-spin text-primary"
+                aria-hidden
+              />
+              <p className="mt-3 text-sm font-medium text-ink">
+                Waiting for the other finish
+              </p>
+              <p className="mt-1 text-xs text-ink-faint">
+                Their result will appear live.
+              </p>
             </div>
           )}
         </div>
 
         <div className="flex flex-wrap items-center gap-2 border-t border-line bg-muted/40 px-5 py-4 sm:px-6">
-          <Button variant="primary" asChild>
+          <Button variant="primary" onClick={onRematch} disabled={!canRematch}>
+            <RotateCcw className="size-4" aria-hidden />
+            {rematchReady ? "Cancel rematch" : "Rematch"}
+          </Button>
+          <Button variant="outline" asChild>
             <Link href="/race">
               <RotateCcw className="size-4" aria-hidden />
               New race
@@ -776,6 +926,17 @@ function RaceResultPanel({
             <Link href="/progress">See progress</Link>
           </Button>
         </div>
+        <p role="status" className="px-5 pb-4 text-sm text-ink-soft">
+          {!opponent
+            ? "Your rival left. Share this room again or start a new race."
+            : !canRematch
+              ? "Rematch is available when both racers finish."
+              : rematchReady
+                ? "Waiting for your rival to accept. Same room, fresh text."
+                : opponentReady
+                  ? "Your rival wants a rematch."
+                  : "Both players press Rematch to race again here."}
+        </p>
       </Panel>
 
       <p className="text-center text-xs text-ink-faint">
@@ -816,7 +977,9 @@ function PlayerLane({
     return (
       <div className="flex min-h-32 flex-col items-center justify-center rounded-lg border border-dashed border-line bg-muted/25 text-center">
         <Radio className="size-5 text-ink-faint" aria-hidden />
-        <p className="mt-2 text-sm font-medium text-ink-soft">Waiting for opponent</p>
+        <p className="mt-2 text-sm font-medium text-ink-soft">
+          Waiting for opponent
+        </p>
         <p className="mt-1 text-xs text-ink-faint">{slot}</p>
       </div>
     );
@@ -829,16 +992,24 @@ function PlayerLane({
     <div
       className={cn(
         "relative flex min-h-32 flex-col justify-between rounded-lg border p-4",
-        isCurrent ? "border-primary/35 bg-primary-soft/55" : "border-line bg-surface",
+        isCurrent
+          ? "border-primary/35 bg-primary-soft/55"
+          : "border-line bg-surface",
       )}
     >
       <div className="flex items-start justify-between gap-3">
         <span className="legend">{slot}</span>
-        {isHost ? <Crown className="size-4 text-accent" aria-label="Host" /> : null}
+        {isHost ? (
+          <Crown className="size-4 text-accent" aria-label="Host" />
+        ) : null}
       </div>
       <div>
-        <p className="truncate font-display text-lg font-semibold text-ink">{player.name}</p>
-        <p className="mt-1 text-xs text-ink-faint">{isCurrent ? "You" : isHost ? "Host" : "Rival"}</p>
+        <p className="truncate font-display text-lg font-semibold text-ink">
+          {player.name}
+        </p>
+        <p className="mt-1 text-xs text-ink-faint">
+          {isCurrent ? "You" : isHost ? "Host" : "Rival"}
+        </p>
       </div>
       <p
         className={cn(
@@ -846,7 +1017,12 @@ function PlayerLane({
           player.ready ? "text-success" : "text-ink-soft",
         )}
       >
-        <span className={cn("size-2 rounded-full", player.ready ? "bg-success" : "bg-line")} />
+        <span
+          className={cn(
+            "size-2 rounded-full",
+            player.ready ? "bg-success" : "bg-line",
+          )}
+        />
         {player.ready ? "Ready" : "Not ready"}
       </p>
     </div>
@@ -862,9 +1038,18 @@ function RaceRule({ label, value }: { label: string; value: string }) {
   );
 }
 
-function ConnectionBadge({ state, className }: { state: ConnectionState; className?: string }) {
+function ConnectionBadge({
+  state,
+  className,
+}: {
+  state: ConnectionState;
+  className?: string;
+}) {
   return (
-    <Badge tone={state === "connected" ? "success" : "neutral"} className={className}>
+    <Badge
+      tone={state === "connected" ? "success" : "neutral"}
+      className={className}
+    >
       {state === "connecting" ? (
         <Loader2 className="size-3 animate-spin" aria-hidden />
       ) : (
@@ -875,7 +1060,15 @@ function ConnectionBadge({ state, className }: { state: ConnectionState; classNa
   );
 }
 
-function RaceReadout({ label, value, unit }: { label: string; value: string; unit?: string }) {
+function RaceReadout({
+  label,
+  value,
+  unit,
+}: {
+  label: string;
+  value: string;
+  unit?: string;
+}) {
   return (
     <div>
       <p className="legend">{label}</p>
@@ -883,7 +1076,9 @@ function RaceReadout({ label, value, unit }: { label: string; value: string; uni
         <span className="font-display text-3xl font-semibold tracking-tight text-ink tnum sm:text-4xl">
           {value}
         </span>
-        {unit ? <span className="font-mono text-xs text-ink-faint">{unit}</span> : null}
+        {unit ? (
+          <span className="font-mono text-xs text-ink-faint">{unit}</span>
+        ) : null}
       </p>
     </div>
   );
@@ -892,7 +1087,9 @@ function RaceReadout({ label, value, unit }: { label: string; value: string; uni
 function OpponentTrack({ name, progress }: { name: string; progress: number }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="w-24 truncate text-xs font-medium text-ink-soft">{name}</span>
+      <span className="w-24 truncate text-xs font-medium text-ink-soft">
+        {name}
+      </span>
       <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
         <div
           className="h-full rounded-full bg-accent transition-[width] duration-200 ease-linear"
@@ -931,13 +1128,27 @@ function ResultLane({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="legend">{label}</p>
-          <h2 className="mt-1 truncate font-display text-lg font-semibold text-ink">{name}</h2>
+          <h2 className="mt-1 truncate font-display text-lg font-semibold text-ink">
+            {name}
+          </h2>
         </div>
-        {winner ? <Trophy className="size-5 text-accent" aria-label="Winner" /> : null}
+        {winner ? (
+          <Trophy className="size-5 text-accent" aria-label="Winner" />
+        ) : null}
       </div>
       <div className="mt-6 flex flex-wrap items-end gap-6">
-        <Stat label="WPM" value={formatDecimal(wpm, 0)} size="lg" tone="primary" />
-        <Stat label="Accuracy" value={formatDecimal(accuracy, 1)} unit="%" size="sm" />
+        <Stat
+          label="WPM"
+          value={formatDecimal(wpm, 0)}
+          size="lg"
+          tone="primary"
+        />
+        <Stat
+          label="Accuracy"
+          value={formatDecimal(accuracy, 1)}
+          unit="%"
+          size="sm"
+        />
         <Stat label="Correct" value={correctChars} unit="chars" size="sm" />
       </div>
     </div>
@@ -956,9 +1167,15 @@ function StatePanel({
   return (
     <Panel>
       <PanelBody className="flex min-h-72 flex-col items-center justify-center text-center">
-        <span className="keycap flex size-11 items-center justify-center text-danger">{icon}</span>
-        <h1 className="mt-4 font-display text-xl font-semibold text-ink">{title}</h1>
-        <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-soft">{detail}</p>
+        <span className="keycap flex size-11 items-center justify-center text-danger">
+          {icon}
+        </span>
+        <h1 className="mt-4 font-display text-xl font-semibold text-ink">
+          {title}
+        </h1>
+        <p className="mt-2 max-w-md text-sm leading-relaxed text-ink-soft">
+          {detail}
+        </p>
         <Button variant="keycap" asChild className="mt-5">
           <Link href="/race">Back to 1v1</Link>
         </Button>

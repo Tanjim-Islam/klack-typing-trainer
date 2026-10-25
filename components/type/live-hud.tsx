@@ -70,7 +70,7 @@ export function LiveHud({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
-        {config.mode === "time" ? (
+        {"seconds" in config && config.seconds ? (
           <Readout
             icon={<Timer className="size-4" />}
             label={idle ? "Time" : "Time left"}

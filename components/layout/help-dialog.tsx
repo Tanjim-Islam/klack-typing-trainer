@@ -13,7 +13,7 @@ const SHORTCUTS: { keys: string[]; action: string }[] = [
   { keys: ["Shift", "Tab"], action: "Move focus out of the typing field" },
   { keys: ["Ctrl", "Backspace"], action: "Clear the current unfinished word" },
   { keys: ["Space"], action: "Skip to the next word (counts as a miss)" },
-  { keys: ["Enter"], action: "Resume after the test loses focus" },
+  { keys: ["Enter"], action: "Fresh text while typing; resume when paused" },
 ];
 
 export function HelpDialog() {

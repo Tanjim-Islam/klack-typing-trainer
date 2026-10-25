@@ -14,7 +14,10 @@ import {
 } from "./storage";
 import * as cloud from "./cloud";
 import type { Account } from "./auth/account";
-import { createSupabaseBrowserClient, type SupabaseClient } from "./supabase/client";
+import {
+  createSupabaseBrowserClient,
+  type SupabaseClient,
+} from "./supabase/client";
 import { supabaseConfigured } from "./supabase/env";
 import {
   DEFAULT_SETTINGS,
@@ -52,8 +55,10 @@ import {
  */
 
 export interface QueuedDrill {
+  id?: string;
   name: string;
   text: string;
+  source?: "test" | "adaptive" | "repair";
   /** Present when the drill was generated from weak-key analysis. */
   keys?: string[];
 }
@@ -191,7 +196,8 @@ function push(
     () => {
       // Do not stamp "synced" over a load that is still running, or over an
       // error raised by some other write in the meantime.
-      if (sync === "loading" || sync === "merging" || syncError !== null) return;
+      if (sync === "loading" || sync === "merging" || syncError !== null)
+        return;
       if (sync !== "synced") {
         sync = "synced";
         emit();
@@ -292,7 +298,12 @@ export async function enterAccount(next: Account) {
     data = {
       ...seeded,
       settings: remote.settings,
-      results: remote.results,
+      // Older database deployments may not have the additive training column
+      // yet. Keep richer details in this account's cache for matching rows.
+      results: remote.results.map((result) => {
+        const local = data.results.find((item) => item.id === result.id);
+        return { ...result, training: result.training ?? local?.training };
+      }),
       // Built-in drills live in code, not in the database, so take them from
       // the freshly seeded document and append the account's own.
       drills: [...seeded.drills, ...remote.drills],
@@ -330,12 +341,15 @@ async function mergeGuestInto(
   const newResults = guest.results.filter((r) => !remoteResultIds.has(r.id));
 
   const remoteDrillIds = new Set(remote.drills.map((d) => d.id));
-  const newDrills = guest.drills.filter((d) => !d.builtIn && !remoteDrillIds.has(d.id));
+  const newDrills = guest.drills.filter(
+    (d) => !d.builtIn && !remoteDrillIds.has(d.id),
+  );
 
   // A brand new account has nothing of its own to overwrite, so let this
   // browser's chosen settings carry over. An account with history keeps its
   // own: those were chosen later, and deliberately.
-  const accountIsFresh = remote.results.length === 0 && remote.drills.length === 0;
+  const accountIsFresh =
+    remote.results.length === 0 && remote.drills.length === 0;
   const adoptSettings = accountIsFresh && !settingsAreDefault(guest.settings);
 
   if (newResults.length === 0 && newDrills.length === 0 && !adoptSettings) {
@@ -348,7 +362,8 @@ async function mergeGuestInto(
   if (newResults.length > 0) await cloud.pushResults(supabase, newResults);
   if (newDrills.length > 0) await cloud.pushDrills(supabase, userId, newDrills);
   if (adoptSettings) await cloud.pushSettings(supabase, userId, guest.settings);
-  if (accountIsFresh && guest.onboarded) await cloud.setOnboarded(supabase, userId, true);
+  if (accountIsFresh && guest.onboarded)
+    await cloud.setOnboarded(supabase, userId, true);
 
   return {
     ...remote,
@@ -396,7 +411,9 @@ export function leaveAccount() {
 
 export function updateSettings(patch: Partial<Settings>) {
   commit({ ...data, settings: { ...data.settings, ...patch } });
-  push("That setting", (supabase, userId) => cloud.pushSettings(supabase, userId, patch));
+  push("That setting", (supabase, userId) =>
+    cloud.pushSettings(supabase, userId, patch),
+  );
 }
 
 export function addResult(result: TestResult) {
@@ -431,7 +448,9 @@ export function createDrill(values: DrillFormValues): Drill | null {
     builtIn: false,
   };
   commit({ ...data, drills: [...data.drills, drill] });
-  push("That drill", (supabase, userId) => cloud.pushDrills(supabase, userId, [drill]));
+  push("That drill", (supabase, userId) =>
+    cloud.pushDrills(supabase, userId, [drill]),
+  );
   return drill;
 }
 
@@ -440,13 +459,17 @@ export function editDrill(id: string, values: DrillFormValues) {
   if (!parsed.success) return;
 
   const drills = data.drills.map((d) =>
-    d.id === id && !d.builtIn ? { ...d, ...parsed.data, updatedAt: Date.now() } : d,
+    d.id === id && !d.builtIn
+      ? { ...d, ...parsed.data, updatedAt: Date.now() }
+      : d,
   );
   commit({ ...data, drills });
 
   const edited = drills.find((d) => d.id === id && !d.builtIn);
   if (edited) {
-    push("That drill", (supabase, userId) => cloud.pushDrills(supabase, userId, [edited]));
+    push("That drill", (supabase, userId) =>
+      cloud.pushDrills(supabase, userId, [edited]),
+    );
   }
 }
 
@@ -466,7 +489,8 @@ export function duplicateDrill(id: string): Drill | null {
   const taken = new Set(data.drills.map((d) => d.name));
   let name = `${source.name} copy`.slice(0, DRILL_NAME_MAX);
   let n = 2;
-  while (taken.has(name)) name = `${source.name} copy ${n++}`.slice(0, DRILL_NAME_MAX);
+  while (taken.has(name))
+    name = `${source.name} copy ${n++}`.slice(0, DRILL_NAME_MAX);
 
   const now = Date.now();
   const copy: Drill = {
@@ -479,7 +503,9 @@ export function duplicateDrill(id: string): Drill | null {
     builtIn: false,
   };
   commit({ ...data, drills: [...data.drills, copy] });
-  push("That drill", (supabase, userId) => cloud.pushDrills(supabase, userId, [copy]));
+  push("That drill", (supabase, userId) =>
+    cloud.pushDrills(supabase, userId, [copy]),
+  );
   return copy;
 }
 
@@ -492,14 +518,18 @@ export function queueDrill(drill: QueuedDrill | null) {
 export function dismissOnboarding() {
   if (data.onboarded) return;
   commit({ ...data, onboarded: true });
-  push("Your progress", (supabase, userId) => cloud.setOnboarded(supabase, userId, true));
+  push("Your progress", (supabase, userId) =>
+    cloud.setOnboarded(supabase, userId, true),
+  );
 }
 
 export function exportAll(): string {
   return exportStore(data);
 }
 
-export function replaceAll(json: string): { ok: true } | { ok: false; error: string } {
+export function replaceAll(
+  json: string,
+): { ok: true } | { ok: false; error: string } {
   const outcome = importStore(json);
   if (!outcome.ok) return { ok: false, error: outcome.error };
 
@@ -530,5 +560,9 @@ export function resetAll() {
 /* -------------------------------------------------------------------------- */
 
 export function useStore(): StoreSnapshot {
-  return useSyncExternalStore(subscribe, () => snapshot, () => serverSnapshot);
+  return useSyncExternalStore(
+    subscribe,
+    () => snapshot,
+    () => serverSnapshot,
+  );
 }

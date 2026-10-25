@@ -30,7 +30,9 @@ export interface KeyScore {
 }
 
 /** Rolls character stats up onto physical keys so `A` and `a` share a score. */
-export function keyScores(stats: Record<string, KeyTally>): Map<string, KeyScore> {
+export function keyScores(
+  stats: Record<string, KeyTally>,
+): Map<string, KeyScore> {
   const byKey = new Map<string, KeyScore>();
 
   for (const key of ALL_KEYS) {
@@ -64,10 +66,7 @@ export const MIN_ATTEMPTS_FOR_WEAKNESS = 12;
  * many mistakes they actually caused rather than by percentage alone. A key you
  * miss 30 times matters more than one you missed once out of twelve.
  */
-export function weakestKeys(
-  results: TestResult[],
-  limit = 5,
-): KeyScore[] {
+export function weakestKeys(results: TestResult[], limit = 5): KeyScore[] {
   const scores = [...keyScores(mergeKeyStats(results)).values()];
   return scores
     .filter((s) => s.attempts >= MIN_ATTEMPTS_FOR_WEAKNESS && s.misses > 0)
@@ -91,7 +90,14 @@ export function hasEnoughDataForWeakKeys(results: TestResult[]): boolean {
  * we are only reporting what just happened rather than prescribing practice.
  */
 export function worstKeysInResult(result: TestResult, limit = 4): KeyScore[] {
-  return [...keyScores(result.keyStats).values()]
+  return Object.entries(result.keyStats)
+    .map(([char, tally]) => ({
+      id: char,
+      char,
+      attempts: tally.h + tally.m,
+      misses: tally.m,
+      accuracy: tally.h + tally.m ? (100 * tally.h) / (tally.h + tally.m) : 100,
+    }))
     .filter((s) => s.misses > 0)
     .sort((a, b) => b.misses - a.misses || a.accuracy - b.accuracy)
     .slice(0, limit);
@@ -118,7 +124,11 @@ function tokensForChar(char: string): string[] {
       const pool = dense.length >= 4 ? dense : matches;
       return shuffle(pool).slice(0, 10);
     }
-    return [lower.repeat(3), `${lower}${shortWord()}`, `${shortWord()}${lower}`];
+    return [
+      lower.repeat(3),
+      `${lower}${shortWord()}`,
+      `${shortWord()}${lower}`,
+    ];
   }
 
   if (/[0-9]/.test(char)) {
@@ -304,7 +314,9 @@ export function recentActivity(
 }
 
 /** Personal best per mode, used on the progress page. */
-export function bestByMode(results: TestResult[]): Map<TestResult["mode"], TestResult> {
+export function bestByMode(
+  results: TestResult[],
+): Map<TestResult["mode"], TestResult> {
   const out = new Map<TestResult["mode"], TestResult>();
   for (const r of results) {
     const existing = out.get(r.mode);
@@ -314,7 +326,10 @@ export function bestByMode(results: TestResult[]): Map<TestResult["mode"], TestR
 }
 
 /** True when this result beats every earlier result of the same mode. */
-export function isPersonalBest(result: TestResult, history: TestResult[]): boolean {
+export function isPersonalBest(
+  result: TestResult,
+  history: TestResult[],
+): boolean {
   return history
     .filter((r) => r.id !== result.id && r.mode === result.mode)
     .every((r) => r.wpm < result.wpm);

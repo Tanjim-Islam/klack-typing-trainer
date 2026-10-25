@@ -23,6 +23,11 @@ import {
 import { createId } from "@/lib/format";
 import { playClick } from "@/lib/sound";
 import { addResult, useStore } from "@/lib/store";
+import {
+  comparableResults,
+  trainingFor,
+  type TestConfig,
+} from "@/lib/practice";
 import type { TestResult } from "@/lib/types";
 
 /**
@@ -30,12 +35,7 @@ import type { TestResult } from "@/lib/types";
  * here rather than being read from settings at generation time, so toggling them
  * is an explicit "load a new test" action instead of a hidden side effect.
  */
-export type TestConfig =
-  | { mode: "time"; seconds: number; punctuation: boolean; numbers: boolean }
-  | { mode: "words"; count: number; punctuation: boolean; numbers: boolean }
-  | { mode: "quote" }
-  | { mode: "code" }
-  | { mode: "drill"; id: string; name: string; text: string; keys?: string[] };
+export type { TestConfig } from "@/lib/practice";
 
 export type Phase = "idle" | "running" | "paused" | "finished";
 
@@ -134,7 +134,9 @@ export function useTypingTest(
   const { settings, results } = useStore();
 
   const [config, setConfigState] = useState<TestConfig>(initialConfig);
-  const [session, setSession] = useState<Session>(() => startSession(initialConfig));
+  const [session, setSession] = useState<Session>(() =>
+    startSession(initialConfig),
+  );
   const [phase, setPhase] = useState<Phase>("idle");
   const [elapsedMs, setElapsedMs] = useState(0);
   const [result, setResult] = useState<TestResult | null>(null);
@@ -146,14 +148,33 @@ export function useTypingTest(
   const phaseRef = useRef<Phase>("idle");
   const performanceRef = useRef<PerformanceSnapshot[]>([]);
   const clockRef = useRef({ accumulated: 0, since: null as number | null });
+  const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const preparedRef = useRef<{ config: TestConfig; session: Session } | null>(
+    null,
+  );
+  const stopOnErrorRef = useRef(settings.stopOnError);
 
   const attachInput = useCallback((element: HTMLTextAreaElement | null) => {
+    inputRef.current = element;
     setInputEl(element);
   }, []);
 
   const focusInput = useCallback(() => {
-    inputEl?.focus();
-  }, [inputEl]);
+    inputRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  // Prepare the next passage after paint, outside the restart key's critical path.
+  useEffect(() => {
+    const prepare = () => {
+      preparedRef.current = { config, session: startSession(config) };
+    };
+    if ("requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(prepare, { timeout: 500 });
+      return () => window.cancelIdleCallback(id);
+    }
+    const id = setTimeout(prepare, 0);
+    return () => clearTimeout(id);
+  }, [config, session.test]);
 
   const setPhaseBoth = useCallback((next: Phase) => {
     phaseRef.current = next;
@@ -179,7 +200,12 @@ export function useTypingTest(
 
   const load = useCallback(
     (next: TestConfig, reuse?: LoadedTest) => {
-      const fresh = startSession(next, reuse);
+      const prepared = preparedRef.current;
+      const fresh =
+        !reuse && prepared?.config === next
+          ? prepared.session
+          : startSession(next, reuse);
+      preparedRef.current = null;
       engineRef.current = fresh.engine;
       setSession(fresh);
       performanceRef.current = [];
@@ -198,20 +224,20 @@ export function useTypingTest(
       setConfigState(next);
       load(next);
       // Choosing a mode is an intent to type, so keep the keyboard live.
-      inputEl?.focus();
+      focusInput();
     },
-    [inputEl, load],
+    [focusInput, load],
   );
 
   const restart = useCallback(() => {
     load(config);
-    inputEl?.focus();
-  }, [config, inputEl, load]);
+    focusInput();
+  }, [config, focusInput, load]);
 
   const repeat = useCallback(() => {
     load(config, session.test);
-    inputEl?.focus();
-  }, [config, inputEl, load, session.test]);
+    focusInput();
+  }, [config, focusInput, load, session.test]);
 
   /* ---------------------------------------------------------------------- */
   /* Finishing                                                             */
@@ -239,13 +265,20 @@ export function useTypingTest(
         samples: history.samples,
         performance: history.performance,
         at: Date.now(),
+        training: trainingFor(
+          config,
+          session.test.text,
+          stopOnErrorRef.current,
+        ),
       });
 
       setResult(built);
 
       if (isRecordable(state, elapsed)) {
-        const sameMode = results.filter((r) => r.mode === built.mode);
-        setPersonalBest(sameMode.length > 0 && sameMode.every((r) => r.wpm < built.wpm));
+        const sameMode = comparableResults(built, results);
+        setPersonalBest(
+          sameMode.length > 0 && sameMode.every((r) => r.wpm < built.wpm),
+        );
         setRecorded(true);
         addResult(built);
       } else {
@@ -255,7 +288,7 @@ export function useTypingTest(
 
       if (settings.sound) playClick("done");
     },
-    [config.mode, results, session.test.label, settings.sound, setPhaseBoth, stopClock],
+    [config, results, session.test, settings.sound, setPhaseBoth, stopClock],
   );
 
   /* ---------------------------------------------------------------------- */
@@ -265,7 +298,8 @@ export function useTypingTest(
   useEffect(() => {
     if (phase !== "running") return;
 
-    const limit = config.mode === "time" ? config.seconds * 1000 : null;
+    const limit =
+      "seconds" in config && config.seconds ? config.seconds * 1000 : null;
 
     const tick = () => {
       const ms = elapsedNow();
@@ -292,7 +326,10 @@ export function useTypingTest(
       }
 
       const prev = engineRef.current;
-      const next = applyChar(prev, char, { stopOnError: settings.stopOnError });
+      if (!prev.started) stopOnErrorRef.current = settings.stopOnError;
+      const next = applyChar(prev, char, {
+        stopOnError: stopOnErrorRef.current,
+      });
       if (next === prev) return;
 
       engineRef.current = next;
@@ -322,7 +359,9 @@ export function useTypingTest(
       const next = applyBackspace(engineRef.current, wholeWord);
       if (next === engineRef.current) return;
       engineRef.current = next;
-      performanceRef.current.push(createPerformanceSnapshot(next, elapsedNow()));
+      performanceRef.current.push(
+        createPerformanceSnapshot(next, elapsedNow()),
+      );
       setSession((current) => ({ ...current, engine: next }));
     },
     [elapsedNow],
@@ -333,8 +372,8 @@ export function useTypingTest(
       clockRef.current.since = performance.now();
       setPhaseBoth("running");
     }
-    inputEl?.focus();
-  }, [inputEl, setPhaseBoth]);
+    focusInput();
+  }, [focusInput, setPhaseBoth]);
 
   // Native listeners: `beforeinput` is the reliable path on touch keyboards,
   // `keydown` covers physical keyboards and every control key.
@@ -349,12 +388,27 @@ export function useTypingTest(
 
     const onKeyDown = (event: KeyboardEvent) => {
       handledByKeydown = false;
+      if (phaseRef.current === "finished") return;
+      if (event.ctrlKey || event.metaKey || event.altKey) {
+        if (event.key === "Backspace") {
+          event.preventDefault();
+          pushBackspace(true);
+        }
+        return;
+      }
 
       // Tab restarts, which is what typing apps do, but that would trap
       // keyboard users in the field. Shift+Tab is left alone so focus can always
       // move back out to the rest of the page.
-      if (event.key === "Tab" && !event.shiftKey) {
+      if (
+        (event.key === "Tab" ||
+          (event.key === "Enter" && phaseRef.current !== "paused")) &&
+        !event.shiftKey
+      ) {
         event.preventDefault();
+        if (event.repeat) return;
+        // Tab followed immediately by Enter is one restart, not two passages.
+        if (event.key === "Enter" && phaseRef.current === "idle") return;
         if (phaseRef.current === "running" || phaseRef.current === "paused") {
           onFocusedRestart?.();
         }
@@ -377,6 +431,11 @@ export function useTypingTest(
       if (event.key.length === 1) {
         event.preventDefault();
         handledByKeydown = true;
+        // A later touch insertion may have no keydown at all. Keep the guard
+        // for this event only, rather than swallowing that next insertion.
+        queueMicrotask(() => {
+          handledByKeydown = false;
+        });
         pushChar(event.key);
       }
     };
@@ -440,10 +499,12 @@ export function useTypingTest(
   }, [engine, elapsedMs]);
 
   const remaining =
-    config.mode === "time" ? Math.max(0, config.seconds - elapsedMs / 1000) : null;
+    "seconds" in config && config.seconds
+      ? Math.max(0, config.seconds - elapsedMs / 1000)
+      : null;
 
   const progress =
-    config.mode === "time"
+    "seconds" in config && config.seconds
       ? Math.min(1, elapsedMs / (config.seconds * 1000))
       : engine.target.length > 0
         ? engine.cursor / engine.target.length

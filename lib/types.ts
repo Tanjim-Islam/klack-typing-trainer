@@ -48,7 +48,9 @@ export const settingsSchema = z.object({
   accent: z.enum(ACCENTS).default("teal"),
   motion: z.enum(["system", "reduced"]).default("system"),
   defaultMode: z.enum(TEST_MODES).default("time"),
-  duration: z.union([z.literal(15), z.literal(30), z.literal(60), z.literal(120)]).default(30),
+  duration: z
+    .union([z.literal(15), z.literal(30), z.literal(60), z.literal(120)])
+    .default(30),
   wordCount: z
     .union([z.literal(10), z.literal(25), z.literal(50), z.literal(100)])
     .default(25),
@@ -93,12 +95,53 @@ export const performanceSeriesSchema = z
   })
   .refine(
     ({ elapsedMs, wpm, rawWpm, burst, errors }) =>
-      new Set([elapsedMs.length, wpm.length, rawWpm.length, burst.length, errors.length])
-        .size === 1,
+      new Set([
+        elapsedMs.length,
+        wpm.length,
+        rawWpm.length,
+        burst.length,
+        errors.length,
+      ]).size === 1,
     { message: "Performance series must have matching lengths." },
   );
 
 export type PerformanceSeries = z.infer<typeof performanceSeriesSchema>;
+
+/** Optional on old results. Never infer missing settings from today's defaults. */
+export const trainingSchema = z.object({
+  source: z.enum(["test", "repair", "adaptive", "daily", "race"]),
+  benchmark: z.object({
+    seconds: z.number().int().positive().max(120).optional(),
+    count: z.number().int().positive().max(100).optional(),
+    punctuation: z.boolean(),
+    numbers: z.boolean(),
+    stopOnError: z.boolean(),
+    textId: z.string().max(80).optional(),
+    textLabel: z.string().max(80).optional(),
+  }),
+  drillId: z.string().min(1).max(100).optional(),
+  daily: z
+    .object({
+      day: z.string().regex(/^\d{4}-\d{1,2}-\d{1,2}$/),
+      step: z.number().int().min(1).max(5),
+    })
+    .optional(),
+  missedWords: z
+    .array(
+      z.object({
+        word: z.string().min(1).max(200),
+        misses: z.number().int().positive(),
+      }),
+    )
+    .max(40)
+    .default([]),
+  pairStats: z
+    .record(z.string().length(2), keyTallySchema)
+    .refine((value) => Object.keys(value).length <= 512)
+    .default({}),
+});
+
+export type Training = z.infer<typeof trainingSchema>;
 
 export const resultSchema = z.object({
   id: z.string().min(1),
@@ -119,6 +162,7 @@ export const resultSchema = z.object({
   keyStats: z.record(z.string(), keyTallySchema),
   /** Interval net pace retained for consistency and compact history sparklines. */
   samples: z.array(z.number().min(0)).max(600),
+  training: trainingSchema.optional(),
   /** Point-level net, raw, burst and error history for the detailed result chart. */
   performance: performanceSeriesSchema.default({
     elapsedMs: [],
@@ -167,7 +211,10 @@ export const drillFormSchema = z.object({
   text: z
     .string()
     .trim()
-    .min(DRILL_TEXT_MIN, `Needs at least ${DRILL_TEXT_MIN} characters to practise on.`)
+    .min(
+      DRILL_TEXT_MIN,
+      `Needs at least ${DRILL_TEXT_MIN} characters to practise on.`,
+    )
     .max(DRILL_TEXT_MAX, `Keep the text under ${DRILL_TEXT_MAX} characters.`)
     // The typing surface lays text out as one flowing paragraph, so newlines
     // and runs of whitespace are folded into single spaces.

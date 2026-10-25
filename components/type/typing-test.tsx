@@ -4,9 +4,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { queueDrill, useStore } from "@/lib/store";
+import {
+  DAILY_STEPS,
+  dailyConfig,
+  dailyStatus,
+  repairConfig,
+} from "@/lib/practice";
 import type { Drill, Settings } from "@/lib/types";
 import { Badge, Skeleton } from "@/components/ui/bits";
 import { Panel } from "@/components/ui/panel";
+import { Button } from "@/components/ui/button";
 import { LiveHud } from "./live-hud";
 import { ModeBar } from "./mode-bar";
 import { OnboardingCard } from "./onboarding-card";
@@ -25,10 +32,11 @@ export function TypingTest() {
   const initialConfig: TestConfig = queuedDrill
     ? {
         mode: "drill",
-        id: "generated",
+        id: queuedDrill.id ?? "generated",
         name: queuedDrill.name,
         text: queuedDrill.text,
         keys: queuedDrill.keys,
+        source: queuedDrill.source ?? (queuedDrill.id ? "test" : "adaptive"),
       }
     : defaultConfig(settings, drills);
 
@@ -92,16 +100,33 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
   });
 
   const restartFromResults = useCallback(() => {
-    setKeepFocusStage(false);
+    setKeepFocusStage(true);
     restart();
   }, [restart]);
 
   const repeatFromResults = useCallback(() => {
-    setKeepFocusStage(false);
+    setKeepFocusStage(true);
     repeat();
   }, [repeat]);
 
   const showOnboarding = !onboarded && results.length === 0;
+  const daily = dailyStatus(results);
+  const dailyStep = config.daily?.step;
+  const startDaily = () => {
+    setKeepFocusStage(true);
+    setConfig(dailyConfig(results, daily.done ? 1 : daily.nextStep, daily.day));
+  };
+  const nextDaily = useCallback(() => {
+    if (!config.daily) return;
+    const next = dailyStatus(results);
+    if (next.done) {
+      setKeepFocusStage(false);
+      setConfig(defaultConfig(settings, drills));
+    } else {
+      setKeepFocusStage(true);
+      setConfig(dailyConfig(results, next.nextStep, next.day));
+    }
+  }, [config.daily, results, settings, drills, setConfig]);
 
   // The drill hand-off is consumed once: a later visit starts from the defaults.
   useEffect(() => {
@@ -115,13 +140,29 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
     focusInput();
   }, [showOnboarding, focusInput]);
 
-  // Shortcuts keep working on the results screen, where the input is unmounted.
+  // Shortcuts also work on results while the persistent input is read-only.
   useEffect(() => {
     if (phase !== "finished") return;
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Tab") {
+      if (
+        event.ctrlKey ||
+        event.altKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        event.repeat
+      )
+        return;
+      // Leave normal button/link activation and Shift+Tab navigation available.
+      if (
+        (event.target as HTMLElement)?.closest(
+          "button, a, [role=dialog], [role=combobox]",
+        )
+      )
+        return;
+      if (event.key === "Tab" || event.key === "Enter") {
         event.preventDefault();
-        restartFromResults();
+        if (config.daily) nextDaily();
+        else restartFromResults();
       } else if (event.key === "Escape") {
         event.preventDefault();
         repeatFromResults();
@@ -129,7 +170,7 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase, repeatFromResults, restartFromResults]);
+  }, [phase, config.daily, nextDaily, repeatFromResults, restartFromResults]);
 
   const totalWords = useMemo(
     () => (text.trim() ? text.trim().split(/\s+/).length : 0),
@@ -139,7 +180,10 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
   const typedWords = useMemo(() => {
     if (engine.cursor === 0) return 0;
     if (engine.cursor >= text.length) return totalWords;
-    return Math.min(totalWords, text.slice(0, engine.cursor).split(" ").length - 1);
+    return Math.min(
+      totalWords,
+      text.slice(0, engine.cursor).split(" ").length - 1,
+    );
   }, [engine.cursor, text, totalWords]);
 
   const veil: "none" | "focus" | "pause" =
@@ -182,18 +226,58 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
         <OnboardingCard onDismiss={dismissOnboarding} />
       ) : null}
 
+      {!focusStage && !finished && !dailyStep ? (
+        <Panel className="flex flex-wrap items-center justify-between gap-3 px-5 py-4">
+          <div>
+            <h2 className="text-sm font-semibold text-ink">
+              Five-minute daily practice
+            </h2>
+            <p className="mt-1 text-xs text-ink-soft">
+              {daily.done
+                ? "Today's five rounds are complete."
+                : `${daily.completed}/5 rounds done. Warm up, work on recent mistakes, then test again.`}
+            </p>
+          </div>
+          <Button variant="primary" onClick={startDaily} disabled={daily.done}>
+            {daily.done
+              ? "Done for today"
+              : daily.completed
+                ? "Continue daily practice"
+                : "Start daily practice"}
+          </Button>
+        </Panel>
+      ) : null}
+
       <div
         className={cn(
-          focusStage && "mx-auto flex min-h-full w-full max-w-5xl items-center py-8 sm:py-12",
+          focusStage &&
+            "mx-auto flex min-h-full w-full max-w-5xl items-center py-8 sm:py-12",
         )}
       >
+        <textarea
+          ref={attachInput}
+          value=""
+          onChange={() => undefined}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          aria-label="Typing test input"
+          aria-describedby={finished ? undefined : "typing-target"}
+          tabIndex={finished ? -1 : 0}
+          readOnly={finished}
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          className="sr-only"
+        />
         <Panel
           className={cn(
             "overflow-hidden",
-            focusStage && "w-full overflow-visible border-0 bg-transparent shadow-none",
+            focusStage &&
+              "w-full overflow-visible border-0 bg-transparent shadow-none",
           )}
         >
-          {!focusStage ? (
+          {!focusStage && !dailyStep ? (
             <div className="border-b border-line px-4 py-4 sm:px-6">
               <ModeBar
                 config={config}
@@ -201,6 +285,30 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
                 onRestart={restart}
                 drills={drills}
               />
+            </div>
+          ) : null}
+
+          {dailyStep ? (
+            <div
+              className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm text-ink-soft"
+              aria-live="polite"
+            >
+              <span>
+                Daily practice · {dailyStep}/5 · {DAILY_STEPS[dailyStep - 1]}
+                {adaptiveKeys?.length
+                  ? ` · Focus: ${adaptiveKeys.join(", ")}`
+                  : ""}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setKeepFocusStage(false);
+                  setConfig(defaultConfig(settings, drills));
+                }}
+              >
+                Leave session
+              </Button>
             </div>
           ) : null}
 
@@ -226,24 +334,10 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
               <div className="relative">
                 {/* Visually hidden, but this is the real input: it owns focus and
                     receives every keystroke. */}
-                <textarea
-                  ref={attachInput}
-                  value=""
-                  onChange={() => undefined}
-                  onFocus={() => setFocused(true)}
-                  onBlur={() => setFocused(false)}
-                  aria-label="Typing test input"
-                  aria-describedby="typing-target"
-                  autoComplete="off"
-                  autoCorrect="off"
-                  autoCapitalize="off"
-                  spellCheck={false}
-                  className="absolute inset-0 -z-10 size-full resize-none opacity-0"
-                />
                 <p id="typing-target" className="sr-only">
-                  Type the following text. Press Tab for fresh text without leaving
-                  focus mode, or Escape to reset the test and leave focus mode. Text to
-                  type: {text}
+                  Type the following text. Press Tab or Enter for fresh text
+                  without leaving focus mode, or Escape to reset the test and
+                  leave focus mode. Text to type: {text}
                 </p>
 
                 <TypingSurface
@@ -264,7 +358,9 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
                     <Badge tone="accent">
                       <Sparkles className="size-3" aria-hidden />
                       Targeting{" "}
-                      {adaptiveKeys.map((k) => (k === " " ? "space" : k)).join(" ")}
+                      {adaptiveKeys
+                        .map((k) => (k === " " ? "space" : k))
+                        .join(" ")}
                     </Badge>
                   ) : meta ? (
                     <Badge tone="neutral">{meta}</Badge>
@@ -287,8 +383,29 @@ function TestBody({ initialConfig }: { initialConfig: TestConfig }) {
           result={result}
           recorded={recorded}
           isPersonalBest={isPersonalBest}
-          onNext={restartFromResults}
+          onNext={dailyStep ? nextDaily : restartFromResults}
           onRepeat={repeatFromResults}
+          nextLabel={
+            dailyStep
+              ? daily.done
+                ? "Finish daily practice"
+                : daily.completed >= dailyStep
+                  ? "Next round"
+                  : "Retry this round"
+              : undefined
+          }
+          onRepair={
+            dailyStep
+              ? undefined
+              : () => {
+                  const repair = repairConfig(result);
+                  if (repair) {
+                    setKeepFocusStage(true);
+                    setConfig(repair);
+                  }
+                }
+          }
+          dailyComplete={!!dailyStep && daily.done}
         />
       ) : null}
     </div>

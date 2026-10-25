@@ -3,8 +3,18 @@
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, History, Search, Trash2 } from "lucide-react";
 import { cn } from "@/lib/cn";
-import { formatDateTime, formatDecimal, formatDuration, formatRelative } from "@/lib/format";
-import { MODE_LABELS, TEST_MODES, type TestMode, type TestResult } from "@/lib/types";
+import {
+  formatDateTime,
+  formatDecimal,
+  formatDuration,
+  formatRelative,
+} from "@/lib/format";
+import {
+  MODE_LABELS,
+  TEST_MODES,
+  type TestMode,
+  type TestResult,
+} from "@/lib/types";
 import { Badge, EmptyState, Kbd } from "@/components/ui/bits";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -29,10 +39,12 @@ export function HistoryTable({
   results,
   onDelete,
   onClearAll,
+  totalResults = results.length,
 }: {
   results: TestResult[];
   onDelete: (id: string) => void;
   onClearAll: () => void;
+  totalResults?: number;
 }) {
   const [query, setQuery] = useState("");
   const [mode, setMode] = useState<ModeFilter>("all");
@@ -79,11 +91,15 @@ export function HistoryTable({
       <PanelHeader
         icon={<History className="size-4" aria-hidden />}
         title="Test history"
-        description={`${results.length} test${results.length === 1 ? "" : "s"} saved in this browser.`}
+        description={`${results.length} test${results.length === 1 ? "" : "s"} in this view, ${totalResults} saved in total.`}
         actions={
-          <Button variant="dangerGhost" size="sm" onClick={() => setClearing(true)}>
+          <Button
+            variant="dangerGhost"
+            size="sm"
+            onClick={() => setClearing(true)}
+          >
             <Trash2 className="size-4" aria-hidden />
-            Clear all
+            Clear entire history
           </Button>
         }
       />
@@ -116,7 +132,10 @@ export function HistoryTable({
           }}
           options={[
             { value: "all" as ModeFilter, label: "All modes" },
-            ...TEST_MODES.map((m) => ({ value: m as ModeFilter, label: MODE_LABELS[m] })),
+            ...TEST_MODES.map((m) => ({
+              value: m as ModeFilter,
+              label: MODE_LABELS[m],
+            })),
           ]}
         />
       </div>
@@ -187,7 +206,10 @@ export function HistoryTable({
                   <th scope="col" className="px-3 py-2.5 text-right">
                     <span className="legend">Steady</span>
                   </th>
-                  <th scope="col" className="px-3 py-2.5 pr-5 text-right sm:pr-6">
+                  <th
+                    scope="col"
+                    className="px-3 py-2.5 pr-5 text-right sm:pr-6"
+                  >
                     <span className="sr-only">Actions</span>
                   </th>
                 </tr>
@@ -199,7 +221,9 @@ export function HistoryTable({
                     className="border-b border-line-soft last:border-0 hover:bg-muted/40"
                   >
                     <td className="px-3 py-3 pl-5 sm:pl-6">
-                      <span className="block text-ink">{formatRelative(result.at)}</span>
+                      <span className="block text-ink">
+                        {formatRelative(result.at)}
+                      </span>
                       <span className="block font-mono text-[0.625rem] text-ink-faint">
                         {formatDateTime(result.at)}
                       </span>
@@ -245,14 +269,20 @@ export function HistoryTable({
           {/* Stacked cards on phones: the same data, no sideways scrolling. */}
           <ul className="divide-y divide-line-soft sm:hidden">
             {page.map((result) => (
-              <li key={result.id} className="flex items-start gap-3 px-5 py-3.5">
+              <li
+                key={result.id}
+                className="flex items-start gap-3 px-5 py-3.5"
+              >
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <Badge tone="neutral">{MODE_LABELS[result.mode]}</Badge>
-                    <span className="text-sm text-ink-soft">{result.label}</span>
+                    <span className="text-sm text-ink-soft">
+                      {result.label}
+                    </span>
                   </div>
                   <p className="mt-1.5 font-mono text-[0.6875rem] text-ink-faint">
-                    {formatRelative(result.at)} - {formatDuration(result.elapsedMs)}
+                    {formatRelative(result.at)} -{" "}
+                    {formatDuration(result.elapsedMs)}
                   </p>
                 </div>
                 <div className="shrink-0 text-right">
@@ -280,7 +310,10 @@ export function HistoryTable({
 
           {filtered.length > page.length ? (
             <PanelBody className="flex items-center justify-center border-t border-line">
-              <Button variant="outline" onClick={() => setVisible((v) => v + PAGE_SIZE)}>
+              <Button
+                variant="outline"
+                onClick={() => setVisible((v) => v + PAGE_SIZE)}
+              >
                 Show {Math.min(PAGE_SIZE, filtered.length - page.length)} more
                 <span className="text-ink-faint">
                   ({page.length} of {filtered.length})
@@ -302,8 +335,8 @@ export function HistoryTable({
             <>
               The {MODE_LABELS[pendingDelete.mode].toLowerCase()} test from{" "}
               {formatDateTime(pendingDelete.at)} at{" "}
-              {formatDecimal(pendingDelete.wpm, 1)} wpm will be removed, along with
-              its key accuracy data. This cannot be undone.
+              {formatDecimal(pendingDelete.wpm, 1)} wpm will be removed, along
+              with its key accuracy data. This cannot be undone.
             </>
           ) : null
         }
@@ -320,9 +353,10 @@ export function HistoryTable({
         title="Clear your whole history?"
         body={
           <>
-            All {results.length} saved tests will be deleted, including your key
+            All {totalResults} saved tests will be deleted, including your key
             accuracy data and personal bests. Your drills and settings are kept.
-            Export a backup from <Kbd>Settings</Kbd> first if you want to keep it.
+            Export a backup from <Kbd>Settings</Kbd> first if you want to keep
+            it.
           </>
         }
         confirmLabel="Delete everything"

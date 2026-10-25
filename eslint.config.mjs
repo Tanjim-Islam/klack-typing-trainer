@@ -12,7 +12,12 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    "output/**",
+    ".playwright-cli/**",
   ]),
+  { files: ["tests/**/*.cjs"], rules: { "@typescript-eslint/no-require-imports": "off" } },
+  // playwright-cli evaluates each browser check as a standalone async function.
+  { files: ["tests/browser/*.js"], rules: { "@typescript-eslint/no-unused-expressions": "off" } },
 ]);
 
 export default eslintConfig;

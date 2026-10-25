@@ -1,6 +1,13 @@
 "use client";
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from "react";
 import { MousePointerClick, Pause } from "lucide-react";
 import { cn } from "@/lib/cn";
 import type { CharState } from "@/lib/engine";
@@ -76,11 +83,22 @@ const Word = memo(function Word({
   start,
   text,
   codes,
+  active,
 }: {
   start: number;
   text: string;
   codes: string;
+  active: boolean;
 }) {
+  // Most of a long passage has not been typed yet. A plain text node has the
+  // same wrapping and spacing, without thousands of per-letter DOM elements.
+  if (!active && (/^p+$/.test(codes) || /^c+$/.test(codes))) {
+    return (
+      <span className={cn("inline-block whitespace-pre", CHAR_CLASS[codes[0]])}>
+        {text}
+      </span>
+    );
+  }
   return (
     <span className="inline-block whitespace-pre">
       {Array.from(text).map((char, index) => (
@@ -179,7 +197,8 @@ export function TypingSurface({
       frameRef.current = null;
 
       const motion = motionRef.current;
-      const frameDelta = motion.lastFrame === null ? 0 : timestamp - motion.lastFrame;
+      const frameDelta =
+        motion.lastFrame === null ? 0 : timestamp - motion.lastFrame;
 
       if (reduceMotion() || frameDelta > STALE_FRAME_MS) {
         snapFollower();
@@ -214,78 +233,95 @@ export function TypingSurface({
    * written straight to the elements. Keeping them out of React state means a
    * keystroke re-renders one word rather than the whole paragraph.
    */
-  const paint = useCallback((immediate = false) => {
-    const viewport = viewportRef.current;
-    const track = trackRef.current;
-    const caretEl = caretRef.current;
-    if (!viewport || !track) return;
+  const paint = useCallback(
+    (immediate = false) => {
+      const viewport = viewportRef.current;
+      const track = trackRef.current;
+      const caretEl = caretRef.current;
+      if (!viewport || !track) return;
 
-    const lineHeight = parseFloat(window.getComputedStyle(track).lineHeight);
-    if (!Number.isFinite(lineHeight) || lineHeight <= 0) return;
+      const lineHeight = parseFloat(window.getComputedStyle(track).lineHeight);
+      if (!Number.isFinite(lineHeight) || lineHeight <= 0) return;
 
-    viewport.style.height = `${lineHeight * VISIBLE_LINES}px`;
+      viewport.style.height = `${lineHeight * VISIBLE_LINES}px`;
 
-    const index = Math.min(cursor, text.length - 1);
-    const target =
-      index >= 0 ? track.querySelector<HTMLElement>(`[data-i="${index}"]`) : null;
+      const index = Math.min(cursor, text.length - 1);
+      const target =
+        index >= 0
+          ? track.querySelector<HTMLElement>(`[data-i="${index}"]`)
+          : null;
 
-    if (!target) {
-      if (caretEl) caretEl.style.opacity = "0";
-      motionRef.current.targetX = 0;
-      motionRef.current.targetY = 0;
-      motionRef.current.targetTrackY = 0;
-      motionRef.current.initialized = false;
-      snapFollower();
-      return;
-    }
+      if (!target) {
+        if (caretEl) caretEl.style.opacity = "0";
+        motionRef.current.targetX = 0;
+        motionRef.current.targetY = 0;
+        motionRef.current.targetTrackY = 0;
+        motionRef.current.initialized = false;
+        snapFollower();
+        return;
+      }
 
-    const atEnd = cursor >= text.length;
-    const x = target.offsetLeft + (atEnd ? target.offsetWidth : 0);
-    const y = target.offsetTop;
+      const atEnd = cursor >= text.length;
+      const x = target.offsetLeft + (atEnd ? target.offsetWidth : 0);
+      const y = target.offsetTop;
 
-    if (caretEl) {
-      caretEl.style.opacity = "";
-      caretEl.style.width = caret === "line" ? "2px" : `${Math.max(target.offsetWidth, 6)}px`;
-      caretEl.style.height = caret === "underline" ? "2px" : `${lineHeight * 0.76}px`;
-      caretEl.style.marginTop =
-        caret === "underline" ? `${lineHeight * 0.78}px` : `${lineHeight * 0.12}px`;
-    }
+      if (caretEl) {
+        caretEl.style.opacity = "";
+        caretEl.style.width =
+          caret === "line" ? "2px" : `${Math.max(target.offsetWidth, 6)}px`;
+        caretEl.style.height =
+          caret === "underline" ? "2px" : `${lineHeight * 0.76}px`;
+        caretEl.style.marginTop =
+          caret === "underline"
+            ? `${lineHeight * 0.78}px`
+            : `${lineHeight * 0.12}px`;
+      }
 
-    // Park the active line on the second row so the eye stays still while the
-    // text scrolls underneath it.
-    const line = Math.round(y / lineHeight);
-    const motion = motionRef.current;
-    motion.startX = motion.x;
-    motion.startY = motion.y;
-    motion.startTrackY = motion.trackY;
-    motion.targetX = x;
-    motion.targetY = y;
-    motion.targetTrackY = -Math.max(0, line - 1) * lineHeight;
-    motion.startedAt = performance.now();
-    motion.lastFrame = motion.startedAt;
+      // Park the active line on the second row so the eye stays still while the
+      // text scrolls underneath it.
+      const line = Math.round(y / lineHeight);
+      const motion = motionRef.current;
+      motion.startX = motion.x;
+      motion.startY = motion.y;
+      motion.startTrackY = motion.trackY;
+      motion.targetX = x;
+      motion.targetY = y;
+      motion.targetTrackY = -Math.max(0, line - 1) * lineHeight;
+      motion.startedAt = performance.now();
+      motion.lastFrame = motion.startedAt;
 
-    const restarted = cursor === 0 && previousCursorRef.current !== 0;
-    const contentChanged = text !== previousTextRef.current;
-    const sizeChanged = textSize !== previousTextSizeRef.current;
-    const shouldSnap =
-      immediate ||
-      !motion.initialized ||
-      restarted ||
-      contentChanged ||
-      sizeChanged ||
-      reduceMotion();
+      const restarted = cursor === 0 && previousCursorRef.current !== 0;
+      const contentChanged = text !== previousTextRef.current;
+      const sizeChanged = textSize !== previousTextSizeRef.current;
+      const shouldSnap =
+        immediate ||
+        !motion.initialized ||
+        restarted ||
+        contentChanged ||
+        sizeChanged ||
+        reduceMotion();
 
-    previousCursorRef.current = cursor;
-    previousTextRef.current = text;
-    previousTextSizeRef.current = textSize;
-    motion.initialized = true;
+      previousCursorRef.current = cursor;
+      previousTextRef.current = text;
+      previousTextSizeRef.current = textSize;
+      motion.initialized = true;
 
-    if (shouldSnap) {
-      snapFollower();
-    } else if (frameRef.current === null) {
-      frameRef.current = window.requestAnimationFrame(animateFollower);
-    }
-  }, [animateFollower, caret, cursor, reduceMotion, snapFollower, text, textSize]);
+      if (shouldSnap) {
+        snapFollower();
+      } else if (frameRef.current === null) {
+        frameRef.current = window.requestAnimationFrame(animateFollower);
+      }
+    },
+    [
+      animateFollower,
+      caret,
+      cursor,
+      reduceMotion,
+      snapFollower,
+      text,
+      textSize,
+    ],
+  );
 
   useLayoutEffect(() => {
     paint();
@@ -331,6 +367,9 @@ export function TypingSurface({
             start={word.start}
             text={word.text}
             codes={codesFor(states, word.start, word.text.length)}
+            active={
+              cursor >= word.start && cursor <= word.start + word.text.length
+            }
           />
         ))}
 
@@ -342,7 +381,8 @@ export function TypingSurface({
             veil !== "none" && "invisible",
             blinking && "animate-caret",
             caret === "line" && "rounded-full bg-caret",
-            caret === "block" && "rounded-[2px] border-l-2 border-caret bg-caret/20",
+            caret === "block" &&
+              "rounded-[2px] border-l-2 border-caret bg-caret/20",
             caret === "underline" && "rounded-full bg-caret",
           )}
         />
@@ -368,7 +408,10 @@ export function TypingSurface({
               </>
             ) : (
               <>
-                <MousePointerClick className="size-4 text-primary" aria-hidden />
+                <MousePointerClick
+                  className="size-4 text-primary"
+                  aria-hidden
+                />
                 {focusTitle ?? "Click here to focus"}
               </>
             )}
@@ -376,12 +419,13 @@ export function TypingSurface({
           <span className="flex flex-wrap items-center justify-center gap-1 text-xs text-ink-soft">
             {veil === "pause" ? (
               <>
-                The clock stopped when the test lost focus. Press <Kbd>Enter</Kbd> or
-                click to carry on.
+                The clock stopped when the test lost focus. Press{" "}
+                <Kbd>Enter</Kbd> or click to carry on.
               </>
             ) : (
               <>
-                {focusHint ?? "Then just start typing. The timer waits for your first key."}
+                {focusHint ??
+                  "Then just start typing. The timer waits for your first key."}
               </>
             )}
           </span>
@@ -393,7 +437,8 @@ export function TypingSurface({
 
 function codesFor(states: CharState[], start: number, length: number): string {
   let out = "";
-  for (let i = start; i < start + length; i++) out += CODE[states[i] ?? "pending"];
+  for (let i = start; i < start + length; i++)
+    out += CODE[states[i] ?? "pending"];
   return out;
 }
 

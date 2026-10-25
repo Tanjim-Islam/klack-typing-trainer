@@ -364,6 +364,15 @@ create policy "drills: delete own" on public.drills
 -- a bulk upload of history recorded before sign-in.
 -- =============================================================================
 
+alter table public.test_results
+  add column if not exists training_details jsonb
+  constraint test_results_training_details_shape check (
+    training_details is null or (
+      jsonb_typeof(training_details) = 'object'
+      and octet_length(training_details::text) <= 100000
+    )
+  );
+
 create or replace function public.save_test_results(p_results jsonb)
 returns setof uuid
 language plpgsql
@@ -388,7 +397,7 @@ begin
       user_id, client_id, taken_at, mode, label, elapsed_ms,
       wpm, raw_wpm, accuracy, consistency,
       correct_chars, incorrect_chars, keystrokes, correct_keystrokes, words, samples,
-      performance_samples
+      performance_samples, training_details
     )
     values (
       v_user,
@@ -414,7 +423,8 @@ begin
         ),
         '{}'::real[]
       ),
-      coalesce(v_item -> 'performance', '{}'::jsonb)
+      coalesce(v_item -> 'performance', '{}'::jsonb),
+      v_item -> 'training'
     )
     on conflict (user_id, client_id) do update set
       taken_at           = excluded.taken_at,
@@ -434,6 +444,10 @@ begin
       performance_samples = case
         when v_item ? 'performance' then excluded.performance_samples
         else test_results.performance_samples
+      end,
+      training_details = case
+        when v_item ? 'training' then excluded.training_details
+        else test_results.training_details
       end
     returning id into v_id;
 

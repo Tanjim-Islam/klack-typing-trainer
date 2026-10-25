@@ -41,6 +41,7 @@ export const racePresenceSchema = z.object({
   joinedAt: z.number().int().positive(),
   ready: z.boolean(),
   status: z.enum(["lobby", "racing", "finished"]),
+  raceId: z.string().min(1).max(80).nullable().default(null),
 });
 
 export type RacePresence = z.infer<typeof racePresenceSchema>;
@@ -48,11 +49,35 @@ export type RacePresence = z.infer<typeof racePresenceSchema>;
 export const raceStartSchema = z.object({
   version: z.literal(1),
   raceId: z.string().min(1).max(80),
+  previousRaceId: z.string().min(1).max(80).nullable().default(null),
+  playerIds: z.tuple([z.string().min(1).max(80), z.string().min(1).max(80)]),
   countdownMs: z.number().int().min(2000).max(10000),
   config: raceConfigSchema,
 });
 
 export type RaceStart = z.infer<typeof raceStartSchema>;
+
+/** Reject duplicate starts, stale rounds, and a rematch without local consent. */
+export function acceptsRaceStart(
+  start: RaceStart,
+  presence: RacePresence,
+  currentRaceId: string | null,
+  hostId: string | undefined,
+): boolean {
+  if (
+    start.config.hostId !== hostId ||
+    !start.playerIds.includes(presence.playerId) ||
+    !start.playerIds.includes(start.config.hostId) ||
+    start.playerIds[0] === start.playerIds[1] ||
+    start.raceId === currentRaceId ||
+    start.previousRaceId !== currentRaceId ||
+    !presence.ready
+  )
+    return false;
+  return currentRaceId === null
+    ? presence.status === "lobby"
+    : presence.status === "finished" && presence.raceId === currentRaceId;
+}
 
 export const raceProgressSchema = z.object({
   version: z.literal(1),
@@ -79,7 +104,10 @@ export const raceFinishSchema = z.object({
 export type RaceFinish = z.infer<typeof raceFinishSchema>;
 
 export function normalizeRaceCode(value: string): string {
-  return value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 8);
 }
 
 export function displayRaceCode(code: string): string {
@@ -98,10 +126,16 @@ export function createRaceCode(): string {
       bytes[index] = Math.floor(Math.random() * 256);
     }
   }
-  return Array.from(bytes, (value) => CODE_ALPHABET[value % CODE_ALPHABET.length]).join("");
+  return Array.from(
+    bytes,
+    (value) => CODE_ALPHABET[value % CODE_ALPHABET.length],
+  ).join("");
 }
 
-export function createRaceIdentity(name: string, role: RaceIdentity["role"]): RaceIdentity {
+export function createRaceIdentity(
+  name: string,
+  role: RaceIdentity["role"],
+): RaceIdentity {
   const parsedName = name.trim().slice(0, RACE_NAME_MAX) || "Guest typist";
   return raceIdentitySchema.parse({
     playerId: createId(),
@@ -159,8 +193,14 @@ export function saveRaceSetup(identity: RaceIdentity, config?: RaceConfig) {
   if (typeof window === "undefined") return;
   if (!config) return;
   try {
-    window.sessionStorage.setItem(identityKey(config.code), JSON.stringify(identity));
-    window.sessionStorage.setItem(configKey(config.code), JSON.stringify(config));
+    window.sessionStorage.setItem(
+      identityKey(config.code),
+      JSON.stringify(identity),
+    );
+    window.sessionStorage.setItem(
+      configKey(config.code),
+      JSON.stringify(config),
+    );
   } catch {
     // The room can still work when browser storage is unavailable.
   }
